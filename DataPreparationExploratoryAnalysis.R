@@ -265,13 +265,13 @@ write.csv(kegg_up@result,"Data/kegg_up_DCM.csv")
 
 # Create dot plots showing most enriched categories and how much
 dotplot_up <- dotplot(kegg_up, showCategory = 10) +
-  ggtitle(sprintf("KEGG PEA - Upregulated, for %s", .names[i])) +
+  ggtitle("KEGG PEA - Upregulated", path=paste0(directory_path, '/Figures')) +
   theme(axis.text.y = element_text(size = 8))
-ggsave(sprintf("Dotplot_Upreg_%s.png", .names[i]))
+ggsave("Dotplot_Upreg_KEGG.png", path=paste0(directory_path, '/Figures'))
 
 dotplot_down <- dotplot(kegg_down, showCategory = 10) +
-  ggtitle(sprintf("KEGG PEA - Downregulated, for %s", .names[i])) +
+  ggtitle("KEGG PEA - Downregulated", path=paste0(directory_path, '/Figures')) +
   theme(axis.text.y = element_text(size = 8))
-ggsave(sprintf("Dotplot_Downreg_%s.png", .names[i]))
+ggsave("Dotplot_Downreg_KEGG.png", path=paste0(directory_path, '/Figures'))
 
 # TODO - Add GO Enrichment Analysis
