@@ -42,7 +42,21 @@ gxData <- gxData_all[, colnames(gxData_all) %in% rownames(metadata)]
 # Turn all character-type columns into factors (categorical variables)
 metadata <- metadata |> mutate_if(is.character, as.factor)
 
-# TODO - Any data clean-up or batch correction required?
+# TODO - Any data clean-up? Check code below in meeting :) 
+
+# Create a Model with the variable of interest (etiology, whose variation we want to explain in our analysis)
+model <- model.matrix(~ etiology, data = metadata)
+
+# Create a Null model (baseline) without a variable of interest (explains the overall avg expression, without accounting
+#    for any biological predictors)
+model0 <- model.matrix(~ 1, data = metadata)
+
+# Create a surrogate variable (unknown factors) by separating the known variation (model) from the total variation in
+#    the data and comparing it with the baseline. It will be a matrix with samples as rows and as many columns as unknown
+#    factors found adding variability to the data (like principal components, for which each sample will have a value).
+sv.obj <- sva(as.matrix(gxData), model, model0)
+
+modelSV <- cbind(model, sv.obj$sv)
 
 # Participant table -----------------------------------------------------------
 participant_table <- metadata |>
