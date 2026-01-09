@@ -191,9 +191,7 @@ ggsave("PCA_PC1_vs_PC2.png", plot = pca1v2, path=paste0(directory_path, '/Figure
 # Differential Expression Analysis
 #-----------------------------------------------------------------------------#
 
-# TODO - correct for covariates? (For instance, diabetes?)
-
-design <- model.matrix(~ 0 + etiology, data = metadata)
+design <- model.matrix(~ race+age+etiology, data = metadata)
 fit <- lmFit(gxData, design)
 
 # Contrast DCM and control
