@@ -187,6 +187,24 @@ pca1v2 <- ggplot(plot_pca, aes(x = PC1, y = PC2)) +
 pca1v2
 ggsave("PCA_PC1_vs_PC2.png", plot = pca1v2, path=paste0(directory_path, '/Figures'))
 
+# Scatterplot (to view outliers)
+library(plotly)
+
+plot_pca$sample_id <- rownames(plot_pca)
+
+plot_ly(
+  data = plot_pca,
+  x = ~PC1,
+  y = ~PC2,
+  color = ~etiology,
+  colors = c("DCM" = "red", "NF" = "blue"),
+  size = ~age,
+  text = ~sample_id,
+  type = "scatter",
+  mode = "markers")
+
+# NOTE - it is not saved
+
 #-----------------------------------------------------------------------------#
 # Differential Expression Analysis
 #-----------------------------------------------------------------------------#
