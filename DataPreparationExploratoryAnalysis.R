@@ -17,6 +17,7 @@ library(gtsummary)
 library(pcaMethods)
 library(limma)
 library(sva)
+library(writexl)
 
 library(clusterProfiler)
 library(org.Hs.eg.db)
@@ -233,6 +234,8 @@ get_sig <- function(df) {
 }
 
 DCM_diffexp <- get_sig(dge_res_DCM)
+
+write_xlsx(DCM_diffexp, "DCM_diffexp.xlsx") # Export DCM)_diffexp as an excel file
 
 #-----------------------------------------------------------------------------#
 # Pathway Enrichment Analysis
