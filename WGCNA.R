@@ -455,9 +455,98 @@ commandsPOST(                 # Query STRING database through Cytoscape
     '" limit=0'))
 
 dataset <- read_excel("DCM_diffexp_copy.xlsx")    # Load differential expression data onto network
-dataset <- tibble::rownames_to_column(dataset, var = "Ensembl_GeneID") # Convert rownames to a col
-
 loadTableData(
   dataset, 
   data.key.column = "Ensembl_GeneID", 
   table.key.column = "query term")
+
+# BLACK MODULE Adding expression heatmap -------------------------------------#
+
+RCy3::copyVisualStyle("default", "my_style_heatmap2")
+
+# Add heatmap showing male and female differential expression
+RCy3::setNodeCustomHeatMapChart("logFC",
+  slot = 2, 
+  style.name = "my_style_heatmap2", 
+  colors = c("#EF8A62", "#FFFFFF", "#67A9CF"),  # Red-White-Blue
+  range = c(min(dataset$logFC), max(dataset$logFC)))
+
+RCy3::setNodeLabelMapping("display name", style.name="my_style_heatmap2")
+
+# Apply visual style
+RCy3::setVisualStyle("my_style_heatmap2")
+
+# BLACK MODULE Analyze network topology --------------------------------------#
+
+# This calculates degree, betweenness centrality, clustering coefficient, etc.
+analyzeNetwork(directed = FALSE)
+
+# Get node table with all network properties
+node.table <- getTableColumns(table = "node")
+
+# Extract key network metrics
+network.metrics <- node.table[, c(
+  "display name",
+  "Degree",
+  "BetweennessCentrality", 
+  "ClusteringCoefficient"
+)]
+
+# Sort by degree to find hub genes
+network.metrics <- network.metrics[order(network.metrics$Degree, decreasing = TRUE), ]
+hist(network.metrics$Degree, breaks=30, main = "Degree distribution")
+
+# Display top 10 hub genes
+print(head(network.metrics, 10))
+
+# Get network statistics
+cat("\nNetwork Statistics:\n")
+cat("  - Total nodes:", nrow(node.table), "\n")
+cat("  - Average degree:", round(mean(node.table$Degree, na.rm = TRUE), 2), "\n")
+cat("  - Network density:", round(mean(node.table$Degree, na.rm = TRUE) / (nrow(node.table) - 1), 3), "\n")
+cat("  - Average clustering coefficient:", 
+    round(mean(node.table$ClusteringCoefficient, na.rm = TRUE), 3), "\n")
+
+# Save network metrics to file
+write.csv(network.metrics, file = "black_module_network_metrics.csv", row.names = FALSE)
+
+# Create custom visual style
+RCy3::copyVisualStyle("default", "network_analysis_style")
+
+# Map node size to Degree (larger nodes = more connections)
+setNodeSizeMapping(
+  table.column = "Degree",
+  table.column.values = c(min(node.table$Degree), max(node.table$Degree)),
+  sizes = c(30, 150),
+  mapping.type = "continuous",
+  style.name = "network_analysis_style"
+)
+
+# Add expression heatmap
+RCy3::setNodeCustomHeatMapChart(
+  c("DCMvsControl_male_logFC", "DCMvsControl_female_logFC"), 
+  slot = 2, 
+  style.name = "network_analysis_style", 
+  colors = c("#EF8A62", "#FFFFFF", "#67A9CF"),
+  range = c(-1, 1)
+)
+
+RCy3::setNodeLabelMapping("display name", style.name="network_analysis_style")
+
+
+# Apply visual style
+RCy3::setVisualStyle("network_analysis_style")
+
+cat("✓ Visual style applied!\n")
+cat("  - Node size = Degree\n")
+cat("  - Node color = Betweenness Centrality\n")
+cat("  - Heatmap = Male/Female expression changes\n")
+
+# Export network image
+exportImage(
+  filename = "black_module_network.png",
+  type = "PNG",
+  zoom = 200
+)
+
+
