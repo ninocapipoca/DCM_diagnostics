@@ -290,9 +290,9 @@ geneTree3 <- net$dendrograms[[3]]
 module.table <- table(moduleColors)
 module.df <- as.data.frame(module.table)
 colnames(module.df) <- c("Module", "Number of Genes")
-module.df <- module.df1[order(module.df1$`Number of Genes`, decreasing = TRUE), ]
+module.df <- module.df[order(module.df$`Number of Genes`, decreasing = TRUE), ]
 
-print(module.df1)
+print(module.df)
 
 
 # TODO - Save the dendrograms
@@ -424,3 +424,40 @@ geneInfo <- geneInfo0[geneOrder, ]
 # Save to CSV file
 write.csv(geneInfo, file = "geneInfo.csv", row.names = FALSE)
 
+#-----------------------------------------------------------------------------#
+# Cytoscape 
+#-----------------------------------------------------------------------------#
+
+# Test connection to Cytoscape and install stringApp if needed ---------------#
+
+RCy3::cytoscapePing() # Test connection to Cytoscape
+
+if (!grepl("status: Installed", RCy3::getAppStatus("stringApp"))) {
+  RCy3::installApp("stringApp")
+  cat("✓ stringApp installed\n")
+}
+
+# Create PPI Network ---------------------------------------------------------#
+
+# BLACK MODULE gene selection
+genes.black <- geneInfo[geneInfo$moduleColor == "black", ]$Gene.ID
+
+query <- format_csv(          # Format gene list for STRING query
+  as.data.frame(genes.black), 
+  col_names = FALSE, 
+  quote_escape = "double", 
+  eol = ",")
+
+commandsPOST(                 # Query STRING database through Cytoscape
+  paste0(
+    'string protein query cutoff=0.4 newNetName="Black Module PPI Network" query="',
+    query,
+    '" limit=0'))
+
+dataset <- read_excel("DCM_diffexp_copy.xlsx")    # Load differential expression data onto network
+dataset <- tibble::rownames_to_column(dataset, var = "Ensembl_GeneID") # Convert rownames to a col
+
+loadTableData(
+  dataset, 
+  data.key.column = "Ensembl_GeneID", 
+  table.key.column = "query term")
