@@ -6,7 +6,9 @@
 # Start date: 08/01/2026      									                              #
 #=============================================================================#
 
-# NOTE - may require revision if batch correction needs to be implemented
+# If you are reading this, you are in the version of this file that uses
+# the batch-corrected dataset from the MAGNet GitHub repo
+# Link: https://github.com/mpmorley/MAGNet/tree/master
 
 # Load packages ------------------------------------------------
 library(ggplot2)
@@ -33,7 +35,7 @@ setwd(directory_path)
 
 # Load gene expression data and participant information (metadata)
 # NOTE - Gene expression dataset contains log2-transformed CPM
-gxData_all <- read.table("MAGNET_GX_2025/MAGNET_GeneExpressionData_CPM_19112020.txt", as.is = T, row.names = 1, header = TRUE)
+gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
 metadata_all <- read.csv("MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
 # Filter out only female participants who either have DCM or are healthy
@@ -47,8 +49,8 @@ gxData <- gxData_all[, colnames(gxData_all) %in% rownames(metadata)]
 metadata <- metadata |> mutate_if(is.character, as.factor)
 
 # Export filtered gxData and metadata for use in other scripts
-write.csv(gxData, "Data/gxData_female.csv")
-write.csv(metadata, "Data/metadata_female.csv")
+write.csv(gxData, "Data/gxData_female_corr.csv")
+write.csv(metadata, "Data/metadata_female_corr.csv")
 
 # Participant table -----------------------------------------------------------
 participant_table <- metadata |>
@@ -150,14 +152,11 @@ for (cond in c("NF", "DCM")) {
 
 # PCA Plot(s) ----------------------------------------------------------------
 
-# TODO - Improve this section. Add more plots? + Add % variance explained
-# in the axis labels
-
 # nipalsPCA chosen instead of default svd bcs of missing vals - note: slower.
 pca_res <- pca(t(gxData), nPcs = 10, method = "nipals")
 
 # Sanity check - see if sample names correspond
-all(rownames(pca_res@scores) == rownames(metadata)) # TRUE
+all(rownames(pca_res@scores) == rownames(metadata))
 
 # Scree plot to understand difference of explained variance between PCs
 var_expl <- data.frame(
@@ -178,20 +177,25 @@ ggsave("Scree_plot.png", plot = scree, path=paste0(directory_path, '/Figures'))
 # Compare PCs; see if clustering arises corresponding to any metadata feature
 plot_pca <- cbind(data.frame(pca_res@scores), metadata)
 
+
+pc1_label = paste("PC1 (score ", round(var_expl[1,2], digits=2), ")", sep="")
+pc2_label = paste("PC2 (score ", round(var_expl[2,2], digits=2), ")", sep="")
+
 # Scatterplots
 # Split suggests PC2 may be related to etiology
 pca1v2 <- ggplot(plot_pca, aes(x = PC1, y = PC2)) + 
   geom_point(aes(col = etiology)) +
+  labs(x = pc1_label, y = pc2_label)
   theme_minimal()
 
 pca1v2
-ggsave("PCA_PC1_vs_PC2.png", plot = pca1v2, path=paste0(directory_path, '/Figures'))
+ggsave("PC1_PC2_corr.png", plot = pca1v2, path=paste0(directory_path, '/Figures'))
 
 #-----------------------------------------------------------------------------#
 # Differential Expression Analysis
 #-----------------------------------------------------------------------------#
 
-design <- model.matrix(~ race+age+etiology, data = metadata)
+design <- model.matrix(~ 0 + etiology+age+race, data = metadata)
 fit <- lmFit(gxData, design)
 
 # Contrast DCM and control
@@ -264,18 +268,47 @@ kegg_down <- enrichKEGG(gene = down_new$ENTREZID,
                         qvalueCutoff = 0.05)
 
 # Save output as CSV
-write.csv(kegg_down@result, "Data/kegg_down_DCM.csv")
-write.csv(kegg_up@result,"Data/kegg_up_DCM.csv")
+write.csv(kegg_down@result, "Data/kegg_down_DCM_corr.csv")
+write.csv(kegg_up@result,"Data/kegg_up_DCM_corr.csv")
 
 # Create dot plots showing most enriched categories and how much
 dotplot_up <- dotplot(kegg_up, showCategory = 10) +
-  ggtitle("KEGG PEA - Upregulated", path=paste0(directory_path, '/Figures')) +
+  ggtitle("KEGG PEA - Upregulated") +
   theme(axis.text.y = element_text(size = 8))
-ggsave("Dotplot_Upreg_KEGG.png", path=paste0(directory_path, '/Figures'))
+ggsave("Dotplot_Upreg_KEGG_corr.png", path=paste0(directory_path, '/Figures'))
 
 dotplot_down <- dotplot(kegg_down, showCategory = 10) +
-  ggtitle("KEGG PEA - Downregulated", path=paste0(directory_path, '/Figures')) +
+  ggtitle("KEGG PEA - Downregulated") +
   theme(axis.text.y = element_text(size = 8))
-ggsave("Dotplot_Downreg_KEGG.png", path=paste0(directory_path, '/Figures'))
+ggsave("Dotplot_Downreg_KEGG_corr.png", path=paste0(directory_path, '/Figures'))
 
-# TODO - Add GO Enrichment Analysis
+# GO Enrichment Analysis -----------------------------------------------------
+
+GO_up <- enrichGO(gene = up_new$ENTREZID,
+                      OrgDb = org.Hs.eg.db,
+                      keyType = 'ENTREZID',
+                      ont = 'All',
+                      pAdjustMethod = "BH",
+                      qvalueCutoff = 0.05)
+
+GO_down <- enrichGO(gene = down_new$ENTREZID,
+                    OrgDb = org.Hs.eg.db,
+                    keyType = 'ENTREZID',
+                    ont = 'All',
+                    pAdjustMethod = "BH",
+                    qvalueCutoff = 0.05)
+
+# Save output as CSV
+write.csv(GO_up@result, "Data/GO_up_DCM_corr.csv")
+write.csv(GO_down@result,"Data/GO_down_DCM_corr.csv")
+
+# Create GO dot plots
+dotplot_up <- dotplot(GO_up, showCategory = 10) +
+  ggtitle("GO PEA - Upregulated") +
+  theme(axis.text.y = element_text(size = 8))
+ggsave("Dotplot_Upreg_GO_corr.png", path=paste0(directory_path, '/Figures'))
+
+dotplot_down <- dotplot(kegg_down, showCategory = 10) +
+  ggtitle("GO PEA - Downregulated") +
+  theme(axis.text.y = element_text(size = 8))
+ggsave("Dotplot_Downreg_GO_corr.png", path=paste0(directory_path, '/Figures'))
