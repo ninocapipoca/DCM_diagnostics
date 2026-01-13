@@ -4,50 +4,23 @@ library(missMethods)
 library(pROC)
 library(caret)
 
+# UNCORRECTED!!!!! DATA VERSION
+# Using uncorrected data to see if SVA is source of leakage
+
 # Set working directory
 directory_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(directory_path)
 
 # Load data
-data <- read.csv("Data/CPMS_SVA_corrected.csv", row.names = 1, header = TRUE)
-metadata_SVA <- read.csv("Data/phenoData_SVA.csv", row.names = 1, header = TRUE)
+data <- read.csv("Data/MAGNET_GX_2025/gxData_female.csv", row.names = 1, header = TRUE)
+metadata <- read.csv("Data/MAGNET_GX_2025/metadata_female.csv", row.names = 1, header = TRUE)
 
 #-----------------------------------------------------------------------------
 # Filter dataset
 #-----------------------------------------------------------------------------
 
-# Log2 normalize
-data <- log2(data + 1)
-
-# Filter out SVA columns
-metadata <- metadata_SVA |> select(1:16)
-
-
-.female <- TRUE # CHANGE THIS FLAG WHEN TESTING
-if (.female){
-  # Filter out only female participants who either have DCM or are healthy
-  metadata <- metadata |> 
-    filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
-} else {
-  # Filter out everything that is not DCM or healthy
-  metadata <- metadata |> 
-    filter(etiology == "DCM" | etiology == "NF")
-}
-
-
-# Filter gene data to include only participants also in metadata
-gxData <- data[, colnames(data) %in% rownames(metadata)]
-
-#-----------------------------------------------------------------------------
-# Pre-processing
-#-----------------------------------------------------------------------------
-
 # Turn all character-type columns into factors (categorical variables)
 metadata <- metadata |> mutate_if(is.character, as.factor)
-
-# Filter lowly-expressed genes (doesn't seem to have an effect)
-keep <- rowSums(gxData > 1) >= 0.2 * ncol(gxData)
-gxData_filtered <- gxData[keep, ]
 
 # Sanity check -  zeroes and NaNs
 sum(gxData == 0)
@@ -81,13 +54,6 @@ x_test <- gxData_t[-index,]
 
 y_train <- resp_vect[index]
 y_test <- resp_vect[-index]
-
-# Apply median imputation
-x_train <- impute_median(x_train, type = "columnwise")
-x_test <- impute_median(x_test, type = "columnwise")
-
-sum(is.na(x_train))
-sum(is.na(x_test))
 
 #-----------------------------------------------------------------------------
 # LASSO regression
@@ -153,50 +119,4 @@ hist(lasso.pred, breaks = 20)
 roc_obj <- roc(y_test, as.numeric(lasso.pred))
 auc(roc_obj)
 plot(roc_obj)
-
-###### WARNING - GENAI!!!!!!! 
-# 1. Define the number of permutations
-n_permutations <- 20
-null_aucs <- numeric(n_permutations)
-
-# 2. Get your "True" AUC first (from your original code)
-# Assuming roc_obj is already calculated from your script
-true_auc <- as.numeric(auc(roc_obj))
-
-set.seed(123) # For reproducibility of the shuffles
-for (i in 1:n_permutations) {
-  
-  # SHUFFLE the training labels
-  y_train_shuffled <- sample(y_train)
-  
-  # Fit model on shuffled labels
-  fit_shuffled <- cv.glmnet(x_train, y_train_shuffled, 
-                            alpha = 1, 
-                            family = "binomial", 
-                            standardize = TRUE)
-  
-  # Predict on the (unshuffled) test set
-  pred_shuffled <- predict(fit_shuffled, 
-                           newx = x_test, 
-                           s = "lambda.1se", 
-                           type = "response")
-  
-  # Calculate AUC for this null run
-  roc_shuffled <- roc(y_test, as.numeric(pred_shuffled), quiet = TRUE)
-  null_aucs[i] <- as.numeric(auc(roc_shuffled))
-  
-  # Optional: Print progress
-  if(i %% 10 == 0) cat("Completed", i, "permutations...\n")
-}
-
-# 3. Visualize the results
-hist(null_aucs, main = "Permutation Test (Null Distribution of AUC)",
-     xlab = "AUC with Shuffled Labels", xlim = c(0, 1), col = "lightblue")
-abline(v = true_auc, col = "red", lwd = 2, lty = 2)
-text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
-
-# 4. Calculate p-value
-# Proportion of times shuffled AUC was better than or equal to true AUC
-p_value <- sum(null_aucs >= true_auc) / n_permutations
-cat("Empirical p-value:", p_value, "\n")
 
