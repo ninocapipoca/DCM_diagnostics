@@ -23,7 +23,7 @@ data <- log2(data + 1)
 metadata <- metadata_SVA |> select(1:16)
 
 
-.female <- FALSE # CHANGE THIS FLAG WHEN TESTING
+.female <- TRUE # CHANGE THIS FLAG WHEN TESTING
 if (.female){
   # Filter out only female participants who either have DCM or are healthy
   metadata <- metadata |> 
@@ -56,10 +56,7 @@ sum(is.na(gxData))
 # Transpose
 gxData_t <- t(gxData)
 
-# Apply median imputation
-gxData_t <- impute_median(gxData_t, type = "columnwise")
 
-sum(is.na(gxData_t))
 
 #-----------------------------------------------------------------------------
 #
@@ -84,6 +81,13 @@ x_test <- gxData_t[-index,]
 
 y_train <- resp_vect[index]
 y_test <- resp_vect[-index]
+
+# Apply median imputation
+x_train <- impute_median(x_train, type = "columnwise")
+x_test <- impute_median(x_test, type = "columnwise")
+
+sum(is.na(x_train))
+sum(is.na(x_test))
 
 #-----------------------------------------------------------------------------
 # LASSO regression
@@ -141,9 +145,6 @@ lasso.pred <- predict(lasso.fit,
 pred_class <- ifelse(lasso.pred > 0.5, "DCM", "NF")
 pred_class <- factor(pred_class, levels = levels(y_test))
 
-# Check confusion matrix
-table(Predicted = pred_class, Actual = y_test)
-
 # Check histogram
 summary(lasso.pred)
 hist(lasso.pred, breaks = 20)
@@ -152,3 +153,50 @@ hist(lasso.pred, breaks = 20)
 roc_obj <- roc(y_test, as.numeric(lasso.pred))
 auc(roc_obj)
 plot(roc_obj)
+
+###### WARNING - GENAI!!!!!!! 
+# 1. Define the number of permutations
+n_permutations <- 20
+null_aucs <- numeric(n_permutations)
+
+# 2. Get your "True" AUC first (from your original code)
+# Assuming roc_obj is already calculated from your script
+true_auc <- as.numeric(auc(roc_obj))
+
+set.seed(123) # For reproducibility of the shuffles
+for (i in 1:n_permutations) {
+  
+  # SHUFFLE the training labels
+  y_train_shuffled <- sample(y_train)
+  
+  # Fit model on shuffled labels
+  fit_shuffled <- cv.glmnet(x_train, y_train_shuffled, 
+                            alpha = 1, 
+                            family = "binomial", 
+                            standardize = TRUE)
+  
+  # Predict on the (unshuffled) test set
+  pred_shuffled <- predict(fit_shuffled, 
+                           newx = x_test, 
+                           s = "lambda.1se", 
+                           type = "response")
+  
+  # Calculate AUC for this null run
+  roc_shuffled <- roc(y_test, as.numeric(pred_shuffled), quiet = TRUE)
+  null_aucs[i] <- as.numeric(auc(roc_shuffled))
+  
+  # Optional: Print progress
+  if(i %% 10 == 0) cat("Completed", i, "permutations...\n")
+}
+
+# 3. Visualize the results
+hist(null_aucs, main = "Permutation Test (Null Distribution of AUC)",
+     xlab = "AUC with Shuffled Labels", xlim = c(0, 1), col = "lightblue")
+abline(v = true_auc, col = "red", lwd = 2, lty = 2)
+text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
+
+# 4. Calculate p-value
+# Proportion of times shuffled AUC was better than or equal to true AUC
+p_value <- sum(null_aucs >= true_auc) / n_permutations
+cat("Empirical p-value:", p_value, "\n")
+
