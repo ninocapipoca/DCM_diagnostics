@@ -38,7 +38,7 @@ setwd(directory_path)
 # write.csv(CPMS_SVA_corrected,"Data/CPMS_SVA_corrected.csv")
 
 # Load gene expression data and participant information (metadata)
-# NOTE - Gene expression dataset contains log2-transformed CPM
+# NOTE - Gene expression dataset contains CPM
 gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
 metadata_all <- read.csv("MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
