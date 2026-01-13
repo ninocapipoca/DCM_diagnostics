@@ -33,6 +33,10 @@ library(biomaRt)
 directory_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(directory_path)
 
+# # Uncomment this code to redownload dataset
+# # Requires CPMS_SVA_corrected.RDS from the GitHub above
+# write.csv(CPMS_SVA_corrected,"Data/CPMS_SVA_corrected.csv")
+
 # Load gene expression data and participant information (metadata)
 # NOTE - Gene expression dataset contains log2-transformed CPM
 gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
