@@ -16,8 +16,10 @@ data <- read.csv("Data/MAGNET_GX_2025/gxData_female.csv", row.names = 1, header 
 metadata <- read.csv("Data/MAGNET_GX_2025/metadata_female.csv", row.names = 1, header = TRUE)
 
 #-----------------------------------------------------------------------------
-# Filter dataset
+# Prepare dataset
 #-----------------------------------------------------------------------------
+
+# NOTE - removed log2 normalization and imputation since no longer necessary
 
 # Turn all character-type columns into factors (categorical variables)
 metadata <- metadata |> mutate_if(is.character, as.factor)
@@ -28,8 +30,6 @@ sum(is.na(gxData))
 
 # Transpose
 gxData_t <- t(gxData)
-
-
 
 #-----------------------------------------------------------------------------
 #
