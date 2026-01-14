@@ -22,11 +22,12 @@ allowWGCNAThreads()
 # Data import (same as in DataPreparationExploratoryAnalysis.R)
 #-----------------------------------------------------------------------------#
 # Set working directory according to the location of this script
-setwd("/Users/mikiverme/Desktop/DCM_diagnostics")
+directory_path <- dirname(rstudioapi::getSourceEditorContext()$path)
+setwd(directory_path)
 
 # Load gene expression data and participant information (metadata)
-# NOTE - Gene expression dataset contains log2-transformed CPM
-gxData_all <- read.table("MAGNET_GX_2025/MAGNET_GeneExpressionData_CPM_19112020.txt", as.is = T, row.names = 1, header = TRUE)
+# NOTE - *SVA-corrected* gene expression dataset (log2-transformed CPM)
+gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
 metadata_all <- read.csv("MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
 # Filter out only female participants who either have DCM or are healthy
