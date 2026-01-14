@@ -19,6 +19,7 @@ library(gtsummary)
 library(pcaMethods)
 library(limma)
 library(sva)
+library(writexl)
 
 library(clusterProfiler)
 library(org.Hs.eg.db)
@@ -33,8 +34,12 @@ library(biomaRt)
 directory_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(directory_path)
 
+# # Uncomment this code to redownload dataset
+# # Requires CPMS_SVA_corrected.RDS from the GitHub above
+# write.csv(CPMS_SVA_corrected,"Data/CPMS_SVA_corrected.csv")
+
 # Load gene expression data and participant information (metadata)
-# NOTE - Gene expression dataset contains log2-transformed CPM
+# NOTE - Gene expression dataset contains CPM
 gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
 metadata_all <- read.csv("MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
@@ -217,6 +222,11 @@ get_sig <- function(df) {
 }
 
 DCM_diffexp <- get_sig(dge_res_DCM)
+DCM_diffexp <- cbind(Ensembl_GeneID = rownames(DCM_diffexp), DCM_diffexp) # Make Ensembl_ID a column
+rownames(DCM_diffexp) <- NULL
+
+write_xlsx(DCM_diffexp, "Data/DCM_diffexp.xlsx") # Export DCM)_diffexp as an excel file
+
 
 #-----------------------------------------------------------------------------#
 # Pathway Enrichment Analysis
