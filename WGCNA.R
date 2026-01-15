@@ -15,8 +15,10 @@ library(readr)
 library(readxl)
 library(RCy3)
 library(rstudioapi)
+library(missMethods)
 
 allowWGCNAThreads()
+
 
 #-----------------------------------------------------------------------------#
 # Data import (same as in DataPreparationExploratoryAnalysis.R)
@@ -27,7 +29,9 @@ setwd(directory_path)
 
 # Load gene expression data and participant information (metadata)
 # NOTE - *SVA-corrected* gene expression dataset (log2-transformed CPM)
-gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
+gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1) |> 
+  log2(gxData_all + 1) |>  #Log2 transform
+  impute_median(gxData_all, type = "columnwise")
 metadata_all <- read.csv("MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
 # Filter out only female participants who either have DCM or are healthy
@@ -142,9 +146,8 @@ collectGarbage()
 # Hierarchical clustering of samples based on gene expression
 sampleTree <- hclust(dist(gxData_t), method = "average")
 
-# Convert traits to color representation for visualization
-# White = low value, red = high value, grey = missing
-traitColors <- numbers2colors(metadata, signed = FALSE) # NOTE - unsigned!!
+meta.traits <- metadata[, c("etiology", "age", "race", "LVEF", "VTVF", "Hypertension", "Diabetes")]
+traitColors <- numbers2colors(meta.traits, signed = FALSE) # Convert those traits to colors
 
 # Plot and save dendrogram with trait heatmap
 dendrogram_path <- file.path("/Users/mikiverme/Desktop/DCM_diagnostics", "dendrogram_heatmap.png")
@@ -153,7 +156,7 @@ png(filename = dendrogram_path, width = 1200, height = 900, res = 150)
 plotDendroAndColors(
   sampleTree, 
   traitColors,
-  groupLabels = names(metadata), 
+  groupLabels = names(meta.traits), 
   cex.dendroLabels = 0.5, 
   main = "Sample Dendrogram and Trait Heatmap"
 )
@@ -170,6 +173,11 @@ sft <- pickSoftThreshold(gxData_t, powerVector = powers, verbose = 5) # Analyze 
 save(sft, file = "WGCNA-sft.RData")
 sft$fitIndices # display result in table
 
+targetPower.test <- 4
+meanConnectivity <- sft$fitIndices[               # Test of mean connectivity for power '4'
+  sft$fitIndices[, "Power"] == targetPower.test,
+  "mean.k."
+]
 
 # Visualise power selection
 # TODO - Fix figures ! 
@@ -218,7 +226,7 @@ text(
 # Construct the network and identify modules
 net <- blockwiseModules(
   gxData_t, 
-  power = 6,                      # Soft-thresholding power
+  power = 4,                      # Soft-thresholding power
   TOMType = "unsigned",           # Topological Overlap Matrix type
   minModuleSize = 30,             # Minimum module size
   reassignThreshold = 0,          # Gene reassignment threshold
@@ -299,7 +307,7 @@ print(module.df)
 # TODO - Save the dendrograms
 
 
-# Module Trait Relationships -------------------------------------------------#
+# Module Trait Relationships ----------------------CORRECTED-------------------#
 
 # Calculate module eigengenes (MEs) - first principal component of each module
 nGenes <- ncol(gxData_t)
@@ -308,57 +316,98 @@ nSamples <- nrow(gxData_t)
 MEs0 <- moduleEigengenes(gxData_t, moduleColors)$eigengenes
 MEs <- orderMEs(MEs0)
 
-# Correlate MEs with clinical traits
-moduleTraitCor <- cor(MEs, metadata, use = "pairwise.complete.obs")
+# Select traits of interest explicitly
+traits_of_interest <- metadata[, c("etiology", "age", "race", "LVEF", "Diabetes", "Hypertension")]  # adjust as needed
+
+# Convert all traits to numeric
+traits_of_interest <- mutate_all(traits_of_interest, function(x) as.numeric(as.character(x)))
+
+# Correlate MEs with multiple traits
+moduleTraitCor <- cor(MEs, traits_of_interest, use = "pairwise.complete.obs")
+rownames(moduleTraitCor) <- colnames(MEs)
 moduleTraitPvalue <- corPvalueStudent(moduleTraitCor, nSamples)
 
-round(moduleTraitCor, 2) # Display correlation matrix
+# Extract correlations and p-values for etiology trait
+dcMcor <- moduleTraitCor[, "etiology"]
+dcMp <- moduleTraitPvalue[, "etiology"]
+
+# Rank modules by strength of correlation with etiology
+ranked.modules <- data.frame(
+  Module = rownames(moduleTraitCor),
+  Correlation = dcMcor,
+  Pvalue = dcMp
+)
+ranked.modules <- ranked.modules[order(-abs(ranked.modules$Correlation)), ]
+
+print(ranked.modules)
+
+# Subset the top 6 ranked modules (for later)
+top5.modules <- ranked.modules$Module[c(1, 2, 4, 5, 6)]
+
+
+# Heatmap ---------------------------------------------------------------------#
 
 # Create text matrix with correlations and p-values
-textMatrix <- paste(
-  signif(moduleTraitCor, 2), 
-  "\n(",
-  signif(moduleTraitPvalue, 1), 
-  ")", 
-  sep = ""
-)
-dim(textMatrix) <- dim(moduleTraitCor)
+moduleTraitCor_mat <- matrix(moduleTraitCor, ncol = 1)
+colnames(moduleTraitCor_mat) <- "etiology"
+rownames(moduleTraitCor_mat) <- names(moduleTraitCor)
 
-# Set margins for plot
-par(mar = c(8, 8.5, 3, 3))
+moduleTraitPvalue_mat <- matrix(moduleTraitPvalue, ncol = 1)
+colnames(moduleTraitPvalue_mat) <- "etiology"
+rownames(moduleTraitPvalue_mat) <- names(moduleTraitPvalue)
+
+moduleTraitCor_sub <- moduleTraitCor[top5.modules, , drop = FALSE]
+moduleTraitPvalue_sub <- moduleTraitPvalue[top5.modules, , drop = FALSE]
+
+textMatrix_sub <- matrix(
+  paste(
+    signif(moduleTraitCor_sub, 2),
+    "\n(",
+    signif(moduleTraitPvalue_sub, 1),
+    ")",
+    sep = ""
+  ),
+  nrow = nrow(moduleTraitCor_sub),
+  ncol = ncol(moduleTraitCor_sub)
+)
 
 # Create heatmap
+yLabels_sub <- top5.modules
+ySymbols_sub <- top5.modules
+
+png("top5_modules_heatmap.png", width = 1000, height = 800, res = 150)
+par(mar = c(8, 8.5, 3, 3))  # Adjust margins for your plot
+
 labeledHeatmap(
-  Matrix = moduleTraitCor,
-  xLabels = names(metadata),
-  yLabels = names(MEs),
-  ySymbols = names(MEs),
+  Matrix = moduleTraitCor_sub,
+  xLabels = colnames(moduleTraitCor_sub),
+  yLabels = yLabels_sub,
+  ySymbols = ySymbols_sub,
   colorLabels = FALSE,
   colors = blueWhiteRed(50),
-  textMatrix = textMatrix,
+  textMatrix = textMatrix_sub,
   setStdMargins = FALSE,
   cex.text = 1,
   cex.lab.y = 0.6,
   zlim = c(-1, 1),
-  main = "Module-Trait Relationships"
+  main = "Top 5 Module-Trait Relationships"
 )
 
-# TODO - Identify what variables (from metadata) do we want to keep in our study
-#        (it defines how many columns in the heatmap), label the variables in the
-#        heatmap, and save the heatmap
+dev.off()
 
+# TODO - Label the correlations legend (right, red/white/blue)
 
 # Gene module membership and significance ------------------------------------#
 
-# Define etiology as the trait of interest
-eti <- as.data.frame(metadata$etiology)
-names(eti)
-modNames <- substring(names(MEs), 3)
+# Define top modules (from  ranked.modules output)
+modules <- c("blue", "turquoise", "darkslateblue")
+modNames <- substring(names(MEs), 3)  # removes "ME" prefix
 
-# Calculate module membership (MM) for each gene
+# Calculate module membership (MM) for each gene (correlation with MEs)
 geneModuleMembership <- as.data.frame(cor(gxData_t, MEs, use = "pairwise.complete.obs"))
 MMPvalue <- as.data.frame(corPvalueStudent(as.matrix(geneModuleMembership), nSamples))
 
+# Rename columns with "MM.<module>"
 names(geneModuleMembership) <- paste("MM", modNames, sep = "")
 names(MMPvalue) <- paste("p.MM", modNames, sep = "")
 
@@ -369,9 +418,8 @@ GSPvalue <- as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSa
 names(geneTraitSignificance) <- paste("GS.", names(metadata$etiology), sep = "")
 names(GSPvalue) <- paste("p.GS.", names(metadata$etiology), sep = "")
 
-# Visualise the MM vs GS
-modules <- c("brown", "black", "lightyellow")
-par(mfrow = c(1, 3))
+# Plot MM vs GS only for the top modules
+par(mfrow = c(1, length(modules)))
 
 for (module in modules) {
   column <- match(module, modNames)
@@ -382,7 +430,7 @@ for (module in modules) {
     abs(geneTraitSignificance[moduleGenes, 1]),
     xlab = paste("Module Membership (MM) in", module, "module"),
     ylab = "Gene Significance (GS) for disease",
-    main = paste("MM vs. GS\n"),
+    main = paste("MM vs. GS for", module),
     cex.main = 1.2, 
     cex.lab = 1, 
     cex.axis = 1, 
@@ -390,9 +438,7 @@ for (module in modules) {
   )
 }
 
-# TODO - fix formatting of the graphs! and know how to interpret them
-
-# Create comprehensive gene information table
+# Build gene information table including only top modules
 geneInfo0 <- data.frame(
   Gene.ID = colnames(gxData_t),
   moduleColor = moduleColors,
@@ -400,36 +446,40 @@ geneInfo0 <- data.frame(
   GSPvalue
 )
 
-# Order modules by their significance for disease
-modOrder <- order(-abs(cor(MEs, metadata$etiology, use = "pairwise.complete.obs")))
+# Find indices of top modules in modNames (to subset MM columns accordingly)
+topModuleIndices <- match(modules, modNames)
 
-# Add module membership information in the chosen order
-for (mod in 1:ncol(geneModuleMembership)) {
+# Add MM and p.MM columns for top modules only, keeping order consistent
+for (idx in topModuleIndices) {
   oldNames <- names(geneInfo0)
   geneInfo0 <- data.frame(
     geneInfo0, 
-    geneModuleMembership[, modOrder[mod]], 
-    MMPvalue[, modOrder[mod]]
+    geneModuleMembership[, idx], 
+    MMPvalue[, idx]
   )
   names(geneInfo0) <- c(
     oldNames, 
-    paste("MM.", modNames[modOrder[mod]], sep = ""),
-    paste("p.MM.", modNames[modOrder[mod]], sep = "")
+    paste("MM.", modNames[idx], sep = ""),
+    paste("p.MM.", modNames[idx], sep = "")
   )
 }
 
-# Order genes by module color, then by gene significance
-geneOrder <- order(geneInfo0$moduleColor, -abs(geneInfo0$GS.))
-geneInfo <- geneInfo0[geneOrder, ]
+# Filter geneInfo0 to keep only genes assigned to the top modules
+geneInfo <- geneInfo0[geneInfo0$moduleColor %in% modules, ]
+
+# Order genes by module color (following order in 'modules') and then by gene significance
+geneOrder <- order(factor(geneInfo$moduleColor, levels = modules), -abs(geneInfo[[paste0("GS.", names(metadata$etiology))]]))
+geneInfo <- geneInfo[geneOrder, ]
 
 # Save to CSV file
-write.csv(geneInfo, file = "geneInfo.csv", row.names = FALSE)
+write.csv(geneInfo, file = "geneInfo_topModules.csv", row.names = FALSE)
+
 
 #-----------------------------------------------------------------------------#
 # Cytoscape 
 #-----------------------------------------------------------------------------#
 
-# Test connection to Cytoscape and install stringApp if needed ---------------#
+# Test connection to Cytoscape and install stringApp if needed
 
 RCy3::cytoscapePing() # Test connection to Cytoscape
 
@@ -440,18 +490,18 @@ if (!grepl("status: Installed", RCy3::getAppStatus("stringApp"))) {
 
 # Create PPI Network ---------------------------------------------------------#
 
-# BLACK MODULE gene selection
-genes.black <- geneInfo[geneInfo$moduleColor == "black", ]$Gene.ID
+# BLUE MODULE gene selection
+genes.blue <- geneInfo[geneInfo$moduleColor == "blue", ]$Gene.ID
 
 query <- format_csv(          # Format gene list for STRING query
-  as.data.frame(genes.black), 
+  as.data.frame(genes.blue), 
   col_names = FALSE, 
   quote_escape = "double", 
   eol = ",")
 
-commandsPOST(                 # Query STRING database through Cytoscape
+commandsPOST(        # Query STRING database through Cytoscape
   paste0(
-    'string protein query cutoff=0.4 newNetName="Black Module PPI Network" query="',
+    'string protein query cutoff=0.4 newNetName="Blue Module PPI Network" query="',
     query,
     '" limit=0'))
 
@@ -461,16 +511,18 @@ loadTableData(
   data.key.column = "Ensembl_GeneID", 
   table.key.column = "query term")
 
-# BLACK MODULE Adding expression heatmap -------------------------------------#
+# BLUE MODULE Adding expression heatmap (female only) -----------------------#
 
 RCy3::copyVisualStyle("default", "my_style_heatmap2")
 
-# Add heatmap showing male and female differential expression
-RCy3::setNodeCustomHeatMapChart("logFC",
-  slot = 2, 
-  style.name = "my_style_heatmap2", 
-  colors = c("#EF8A62", "#FFFFFF", "#67A9CF"),  # Red-White-Blue
-  range = c(min(dataset$logFC), max(dataset$logFC)))
+# Add heatmap showing female differential expression only
+RCy3::setNodeCustomHeatMapChart("DCMvsControl_female_logFC",
+                                slot = 2, 
+                                style.name = "my_style_heatmap2", 
+                                colors = c("#EF8A62", "#FFFFFF", "#67A9CF"),  # Red-White-Blue
+                                range = c(min(dataset$DCMvsControl_female_logFC, na.rm = TRUE), 
+                                          max(dataset$DCMvsControl_female_logFC, na.rm = TRUE))
+)
 
 RCy3::setNodeLabelMapping("display name", style.name="my_style_heatmap2")
 
@@ -523,17 +575,17 @@ setNodeSizeMapping(
   style.name = "network_analysis_style"
 )
 
-# Add expression heatmap
+# Add expression heatmap (female only)
 RCy3::setNodeCustomHeatMapChart(
-  c("DCMvsControl_male_logFC", "DCMvsControl_female_logFC"), 
+  "DCMvsControl_female_logFC", 
   slot = 2, 
   style.name = "network_analysis_style", 
   colors = c("#EF8A62", "#FFFFFF", "#67A9CF"),
-  range = c(-1, 1)
+  range = c(min(dataset$DCMvsControl_female_logFC, na.rm = TRUE), 
+            max(dataset$DCMvsControl_female_logFC, na.rm = TRUE))
 )
 
 RCy3::setNodeLabelMapping("display name", style.name="network_analysis_style")
-
 
 # Apply visual style
 RCy3::setVisualStyle("network_analysis_style")
@@ -541,7 +593,7 @@ RCy3::setVisualStyle("network_analysis_style")
 cat("✓ Visual style applied!\n")
 cat("  - Node size = Degree\n")
 cat("  - Node color = Betweenness Centrality\n")
-cat("  - Heatmap = Male/Female expression changes\n")
+cat("  - Heatmap = Female expression changes only\n")
 
 # Export network image
 exportImage(
