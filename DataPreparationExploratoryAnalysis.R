@@ -11,20 +11,11 @@
 # Link: https://github.com/mpmorley/MAGNet/tree/master
 
 # Load packages ------------------------------------------------
-library(ggplot2)
-library(tidyr)
-library(dplyr)
-library(gt) 
-library(gtsummary)
-library(pcaMethods)
-library(limma)
-library(sva)
-library(writexl)
+.packages <- c("ggplot2", "tidyr", "dplyr", "gt", "gtsummary", 
+               "pcaMethods", "limma", "writexl", "clusterProfiler",
+               "org.Hs.eg.db", "pathview", "biomaRt", "missMethods")
 
-library(clusterProfiler)
-library(org.Hs.eg.db)
-library(pathview)
-library(biomaRt)
+lapply(.packages, require, character.only = TRUE)
 
 #-----------------------------------------------------------------------------#
 # Data import & participant table
@@ -41,7 +32,7 @@ setwd(directory_path)
 # Load gene expression data and participant information (metadata)
 # NOTE - Gene expression dataset contains CPM
 gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
-metadata_all <- read.csv("MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
+metadata_all <- read.csv("Data/MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
 # Filter out only female participants who either have DCM or are healthy
 metadata <- metadata_all |> 
@@ -49,6 +40,10 @@ metadata <- metadata_all |>
 
 # Filter gxData_all to include only participants also in metadata
 gxData <- gxData_all[, colnames(gxData_all) %in% rownames(metadata)]
+
+# Log2 normalize and impute
+gxData <- log2(gxData + 1)
+gxData <- impute_median(gxData, type = "columnwise")
 
 # Turn all character-type columns into factors (categorical variables)
 metadata <- metadata |> mutate_if(is.character, as.factor)
@@ -158,7 +153,7 @@ for (cond in c("NF", "DCM")) {
 # PCA Plot(s) ----------------------------------------------------------------
 
 # nipalsPCA chosen instead of default svd bcs of missing vals - note: slower.
-pca_res <- pca(t(gxData), nPcs = 10, method = "nipals")
+pca_res <- pcaMethods::pca(t(gxData), nPcs = 10, method = "nipals")
 
 # Sanity check - see if sample names correspond
 all(rownames(pca_res@scores) == rownames(metadata))
@@ -227,6 +222,7 @@ rownames(DCM_diffexp) <- NULL
 
 write_xlsx(DCM_diffexp, "Data/DCM_diffexp.xlsx") # Export DCM)_diffexp as an excel file
 
+rownames(DCM_diffexp) <- DCM_diffexp$Ensembl_GeneID
 
 #-----------------------------------------------------------------------------#
 # Pathway Enrichment Analysis
@@ -294,31 +290,51 @@ ggsave("Dotplot_Downreg_KEGG_corr.png", path=paste0(directory_path, '/Figures'))
 
 # GO Enrichment Analysis -----------------------------------------------------
 
-GO_up <- enrichGO(gene = up_new$ENTREZID,
-                      OrgDb = org.Hs.eg.db,
-                      keyType = 'ENTREZID',
-                      ont = 'All',
-                      pAdjustMethod = "BH",
-                      qvalueCutoff = 0.05)
-
-GO_down <- enrichGO(gene = down_new$ENTREZID,
+# Perform analysis for biological processes, cellular components & mol. func.
+for (ontology in c("BP", "CC", "MF")) {
+  
+  print(paste0("GO analysis for ", ontology))
+  
+  print("Upregulated genes....")
+  GO_up <- enrichGO(gene = up_new$ENTREZID,
                     OrgDb = org.Hs.eg.db,
                     keyType = 'ENTREZID',
-                    ont = 'All',
+                    ont = ontology,
                     pAdjustMethod = "BH",
                     qvalueCutoff = 0.05)
+  print("Done")
+  
+  print("Downregulated genes....")
+  GO_down <- enrichGO(gene = down_new$ENTREZID,
+                      OrgDb = org.Hs.eg.db,
+                      keyType = 'ENTREZID',
+                      ont = ontology,
+                      pAdjustMethod = "BH",
+                      qvalueCutoff = 0.05)
+  print("Done")
+  
+  print("Saving as CSV")
+  # Save output as CSV
+  write.csv(GO_up@result, sprintf("Data/GO_%s_up_DCM_corr.csv", ontology))
+  write.csv(GO_down@result,sprintf("Data/GO_%s_down_DCM_corr.csv", ontology))
+  print("Done - saved as CSV")
+  
+  # Create GO dot plots
+  print("Creating dotplots")
+  
+  dotplot_up <- dotplot(GO_up, showCategory = 10) +
+    ggtitle(sprintf("GO PEA (Up) - %s", ontology)) +
+    theme(axis.text.y = element_text(size = 8))
+  ggsave(sprintf("Dotplot_Upreg_GO_%s_corr.png", ontology),
+         path=paste0(directory_path, '/Figures'))
+  print("Upreg dotplot done")
+  
+  dotplot_down <- dotplot(GO_down, showCategory = 10) +
+    ggtitle(sprintf("GO PEA (Down) - %s", ontology)) +
+    theme(axis.text.y = element_text(size = 8))
+  ggsave(sprintf("Dotplot_Downreg_GO_%s_corr.png", ontology),
+         path=paste0(directory_path, '/Figures'))
+  print("Downreg dotplot done")
+}
 
-# Save output as CSV
-write.csv(GO_up@result, "Data/GO_up_DCM_corr.csv")
-write.csv(GO_down@result,"Data/GO_down_DCM_corr.csv")
 
-# Create GO dot plots
-dotplot_up <- dotplot(GO_up, showCategory = 10) +
-  ggtitle("GO PEA - Upregulated") +
-  theme(axis.text.y = element_text(size = 8))
-ggsave("Dotplot_Upreg_GO_corr.png", path=paste0(directory_path, '/Figures'))
-
-dotplot_down <- dotplot(kegg_down, showCategory = 10) +
-  ggtitle("GO PEA - Downregulated") +
-  theme(axis.text.y = element_text(size = 8))
-ggsave("Dotplot_Downreg_GO_corr.png", path=paste0(directory_path, '/Figures'))
