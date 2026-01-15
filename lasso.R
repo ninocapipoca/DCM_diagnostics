@@ -16,7 +16,7 @@ tryCatch({
 
 tryCatch({
   # Try loading ML-ready metadata
-  metadata_SVA <- read.csv("Data/phenoData_SVA.csv", row.names = 1, header = TRUE)
+  metadata_SVA <- read.csv("Data/ML_metadata.csv", row.names = 1, header = TRUE)
 }, warning = function(w) {
   cat("A warning occurred:", conditionMessage(w), "\n")
   print("Try downloading the file & adding it to the Data folder: https://www.dropbox.com/s/eihem5fbnkg7bpm/phenoData.csv?dl=0")
