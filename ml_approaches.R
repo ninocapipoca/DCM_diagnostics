@@ -5,26 +5,54 @@ lapply(.packages, require, character.only = TRUE)
 directory_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(directory_path)
 
-# Load data
-tryCatch({
-  # Try loading ML-ready gxData
-  data <- read.csv("Data/ML_gxData.csv", row.names = 1, header = TRUE)
-}, warning = function(w) {
-  cat("A warning occurred:", conditionMessage(w), "\n")
-  print("If the file ML_gxData.csv does not exist, run preprocess_ML.R first")
-})
+if (exists("CPMS_SVA_corrected")){
+  # In case you download the .RMD file from GitHub and open it here
+  data <- CPMS_SVA_corrected
+} else {
+  tryCatch({
+    # Try loading gene expression data from corrected values
+    data <- read.csv("Data/CPMS_SVA_corrected.csv", row.names = 1, header = TRUE)
+  }, warning = function(w) {
+    cat("A warning occurred:", conditionMessage(w), "\n")
+    print("Add the file to Data or download from https://github.com/mpmorley/MAGNet")
+  })
+}
 
 tryCatch({
-  # Try loading ML-ready metadata
-  metadata_SVA <- read.csv("Data/ML_metadata.csv", row.names = 1, header = TRUE)
+  # Try loading metadata
+  metadata_SVA <- read.csv("Data/phenoData_SVA.csv", row.names = 1, header = TRUE)
 }, warning = function(w) {
   cat("A warning occurred:", conditionMessage(w), "\n")
   print("Try downloading the file & adding it to the Data folder: https://www.dropbox.com/s/eihem5fbnkg7bpm/phenoData.csv?dl=0")
 })
 
+#-----------------------------------------------------------------------------
+# Preprocessing
+#-----------------------------------------------------------------------------
+
+# Log2 normalize
+data <- log2(data + 1)
+
+# Filter out SVA columns
+metadata <- metadata_SVA |> dplyr::select(1:16)
+
+.female <- TRUE # For exploring dataset further, if necessary
+if (.female){
+  # Filter out only female participants who either have DCM or are healthy
+  metadata <- metadata |> 
+    filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
+} else {
+  # Filter out everything that is not DCM or healthy
+  metadata <- metadata |> 
+    filter(etiology == "DCM" | etiology == "NF")
+}
+
+# Filter gene data to include only participants also in metadata
+gxData <- data[, colnames(data) %in% rownames(metadata)]
+
 
 #-----------------------------------------------------------------------------
-# Pre-processing
+# Cleanup
 #-----------------------------------------------------------------------------
 
 # Turn all character-type columns into factors (categorical variables)
@@ -34,6 +62,7 @@ metadata <- metadata |> mutate_if(is.character, as.factor)
 sum(gxData == 0)
 sum(is.na(gxData))
 
+# LASSO REGRESSION checks
 # Looking at distributions of top & "meaningless" genes -------
 # ENSG00000273270   
 # ENSG00000273271
@@ -53,14 +82,13 @@ sum(is.na(gxData))
 # hist(as.numeric(.top_DCM))
 # ------------------------------------ 
 
-# Transpose
-gxData_t <- t(gxData)
-
 #-----------------------------------------------------------------------------
 #
 # Machine Learning
 #
 #-----------------------------------------------------------------------------
+# Transpose
+gxData_t <- t(gxData)
 
 # Split dataset into training and test
 set.seed(42)
@@ -179,4 +207,10 @@ hist(null_aucs, main = "Permutation Test (Null Distribution of AUC)",
      xlab = "AUC with Shuffled Labels", xlim = c(0, 1), col = "lightblue")
 abline(v = true_auc, col = "red", lwd = 2, lty = 2)
 text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
+
+#-----------------------------------------------------------------------------
+# SVM
+#-----------------------------------------------------------------------------
+
+
 
