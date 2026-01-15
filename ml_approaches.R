@@ -224,7 +224,7 @@ control <- trainControl(method="cv",number=10, classProbs = TRUE)
 SVM.model <- train(x = x_train,
                    y = y_train,
                    method = "svmRadial", # radial kernel
-                   tuneLength = 8, # granularity of tuning param grid
+                   tuneLength = 5, # granularity of tuning param grid
                    preProc = c("center","scale"), # preprocessing
                    metric='Accuracy', 
                    trControl=control)
