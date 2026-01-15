@@ -99,7 +99,8 @@ resp_vect <- metadata$etiology[match(rownames(gxData_t), rownames(metadata))]
 resp_vect <- factor(resp_vect, levels = c("NF", "DCM"))
 
 # 70 train / 30 test split
-#index <- sample(1:n, .7*n)
+#index <- sample(1:n, .7*n) - for non stratified
+
 # stratified sampling to avoid one class being underrepresented
 index <- createDataPartition(resp_vect, p = 0.7, list = FALSE) 
 
@@ -115,6 +116,7 @@ x_test <- impute_median(x_test, type = "columnwise")
 
 sum(is.na(x_train))
 sum(is.na(x_test))
+
 
 #-----------------------------------------------------------------------------
 # LASSO regression
@@ -212,5 +214,19 @@ text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
 # SVM
 #-----------------------------------------------------------------------------
 
-# visualize data
+x_train_SVM <- as.data.frame(x_train) |> mutate(etiology = y_train)
+x_test_SVM <- as.data.frame(x_test) |> mutate(etiology = y_test)
+
+# Specify info for training
+# classProbs is class probabilities
+control <- trainControl(method="cv",number=10, classProbs = TRUE)
+
+SVM.model <- train(x = x_train,
+                   y = y_train,
+                   method = "svmRadial", # radial kernel
+                   tuneLength = 8, # granularity of tuning param grid
+                   preProc = c("center","scale"), # preprocessing
+                   metric='Accuracy', 
+                   trControl=control)
+
 
