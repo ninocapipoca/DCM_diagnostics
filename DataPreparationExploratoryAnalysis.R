@@ -45,6 +45,16 @@ gxData <- gxData_all[, colnames(gxData_all) %in% rownames(metadata)]
 gxData <- log2(gxData + 1)
 gxData <- impute_median(gxData, type = "columnwise")
 
+# Check how many values < 1
+# TODO - figure out what to do with this and whether to remove
+sum(gxData < 1) / (length(gxData[,1]) * length(gxData))
+# 
+# .test <- gxData[gxData > 1,]
+# 
+# sum(.test < 1, na.rm = TRUE) / (length(.test[,1]) * length(.test))
+# 
+# .test < 1
+
 # Turn all character-type columns into factors (categorical variables)
 metadata <- metadata |> mutate_if(is.character, as.factor)
 
