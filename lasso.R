@@ -53,6 +53,26 @@ gxData_filtered <- gxData[keep, ]
 sum(gxData == 0)
 sum(is.na(gxData))
 
+# TODO delete later ---
+# ENSG00000273270   
+# ENSG00000273271
+
+# ENSG00000163513, ENSG00000144895 
+#gxData <- gxData[c("ENSG00000273270", "ENSG00000273271"),]
+
+# Histogram of distribution
+# ENSG00000163513
+# .top <-  gxData["ENSG00000205795",]
+# hist(as.numeric(.top))
+# 
+# .top_NF <- .top[, colnames(.top) %in% rownames(metadata[metadata$etiology == "NF",])]
+# hist(as.numeric(.top_NF))
+# 
+# .top_DCM <- .top[, colnames(.top) %in% rownames(metadata[metadata$etiology == "DCM",])]
+# hist(as.numeric(.top_DCM))
+
+# ------------------------------------ 
+
 # Transpose
 gxData_t <- t(gxData)
 
@@ -70,6 +90,7 @@ n <- nrow(gxData_t)
 
 resp_vect <- metadata$etiology[match(rownames(gxData_t), rownames(metadata))]
 resp_vect <- factor(resp_vect, levels = c("NF", "DCM"))
+
 
 # 70 train / 30 test split
 #index <- sample(1:n, .7*n)
@@ -114,8 +135,7 @@ sum(is.na(x_test))
 # 
 # lasso_model$results
 # 
-# pred_test <- predict(lasso_model, newdata = x_test)
-# confusionMatrix(pred_test, y_test)
+
 
 
 # determine optimal values for lambda
@@ -129,8 +149,15 @@ plot(lasso.fit)
 
 # Extract nonzero coefficients (important genes)
 coeffs <- coef(lasso.fit, s = "lambda.1se")
+coeffs_nonzero <- coeffs[coeffs[,1] != 0]
 key_genes <- rownames(coeffs)[coeffs[,1] != 0]
 key_genes <- key_genes[key_genes != "(Intercept)"]
+
+values <- coeffs_nonzero[2:length(coeffs_nonzero)]
+
+key_genes_df <- data.frame(Gene = key_genes, lambda = values)
+key_genes_df <- key_genes_df[order(abs(key_genes_df$lambda)), ]
+
 
 # Write to text file
 cat(key_genes, file = "Data/key_genes_lasso.txt")
@@ -149,6 +176,8 @@ pred_class <- factor(pred_class, levels = levels(y_test))
 summary(lasso.pred)
 hist(lasso.pred, breaks = 20)
 
+confusionMatrix(pred_class, y_test)
+
 # Check ROC
 roc_obj <- roc(y_test, as.numeric(lasso.pred))
 auc(roc_obj)
@@ -156,7 +185,7 @@ plot(roc_obj)
 
 ###### WARNING - GENAI!!!!!!! 
 # 1. Define the number of permutations
-n_permutations <- 20
+n_permutations <- 30
 null_aucs <- numeric(n_permutations)
 
 # 2. Get your "True" AUC first (from your original code)
