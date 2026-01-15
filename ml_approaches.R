@@ -1,4 +1,5 @@
-.packages <- c("dplyr", "pROC", "caret", "glmnet", "missMethods")
+.packages <- c("dplyr", "pROC", "caret", "glmnet", "missMethods",
+               "ggplot2")
 lapply(.packages, require, character.only = TRUE)
 
 # Set working directory
@@ -96,7 +97,6 @@ n <- nrow(gxData_t)
 
 resp_vect <- metadata$etiology[match(rownames(gxData_t), rownames(metadata))]
 resp_vect <- factor(resp_vect, levels = c("NF", "DCM"))
-
 
 # 70 train / 30 test split
 #index <- sample(1:n, .7*n)
@@ -212,5 +212,5 @@ text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
 # SVM
 #-----------------------------------------------------------------------------
 
-
+# visualize data
 
