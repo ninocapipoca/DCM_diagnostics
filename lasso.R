@@ -195,8 +195,3 @@ hist(null_aucs, main = "Permutation Test (Null Distribution of AUC)",
 abline(v = true_auc, col = "red", lwd = 2, lty = 2)
 text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
 
-# 4. Calculate p-value
-# Proportion of times shuffled AUC was better than or equal to true AUC
-p_value <- sum(null_aucs >= true_auc) / n_permutations
-cat("Empirical p-value:", p_value, "\n")
-
