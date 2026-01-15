@@ -1,42 +1,27 @@
-library(glmnet)
-library(dplyr)
-library(missMethods)
-library(pROC)
-library(caret)
+.packages <- c("dplyr", "pROC", "caret", "glmnet", "missMethods")
+lapply(.packages, require, character.only = TRUE)
 
 # Set working directory
 directory_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(directory_path)
 
 # Load data
-data <- read.csv("Data/CPMS_SVA_corrected.csv", row.names = 1, header = TRUE)
-metadata_SVA <- read.csv("Data/phenoData_SVA.csv", row.names = 1, header = TRUE)
+tryCatch({
+  # Try loading ML-ready gxData
+  data <- read.csv("Data/ML_gxData.csv", row.names = 1, header = TRUE)
+}, warning = function(w) {
+  cat("A warning occurred:", conditionMessage(w), "\n")
+  print("If the file ML_gxData.csv does not exist, run preprocess_ML.R first")
+})
 
-#-----------------------------------------------------------------------------
-# Filter dataset
-#-----------------------------------------------------------------------------
+tryCatch({
+  # Try loading ML-ready metadata
+  metadata_SVA <- read.csv("Data/phenoData_SVA.csv", row.names = 1, header = TRUE)
+}, warning = function(w) {
+  cat("A warning occurred:", conditionMessage(w), "\n")
+  print("Try downloading the file & adding it to the Data folder: https://www.dropbox.com/s/eihem5fbnkg7bpm/phenoData.csv?dl=0")
+})
 
-# Log2 normalize
-data <- log2(data + 1)
-
-# Filter out SVA columns
-metadata <- metadata_SVA |> select(1:16)
-
-
-.female <- TRUE # CHANGE THIS FLAG WHEN TESTING
-if (.female){
-  # Filter out only female participants who either have DCM or are healthy
-  metadata <- metadata |> 
-    filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
-} else {
-  # Filter out everything that is not DCM or healthy
-  metadata <- metadata |> 
-    filter(etiology == "DCM" | etiology == "NF")
-}
-
-
-# Filter gene data to include only participants also in metadata
-gxData <- data[, colnames(data) %in% rownames(metadata)]
 
 #-----------------------------------------------------------------------------
 # Pre-processing
@@ -45,15 +30,11 @@ gxData <- data[, colnames(data) %in% rownames(metadata)]
 # Turn all character-type columns into factors (categorical variables)
 metadata <- metadata |> mutate_if(is.character, as.factor)
 
-# Filter lowly-expressed genes (doesn't seem to have an effect)
-keep <- rowSums(gxData > 1) >= 0.2 * ncol(gxData)
-gxData_filtered <- gxData[keep, ]
-
 # Sanity check -  zeroes and NaNs
 sum(gxData == 0)
 sum(is.na(gxData))
 
-# TODO delete later ---
+# Looking at distributions of top & "meaningless" genes -------
 # ENSG00000273270   
 # ENSG00000273271
 
@@ -70,13 +51,10 @@ sum(is.na(gxData))
 # 
 # .top_DCM <- .top[, colnames(.top) %in% rownames(metadata[metadata$etiology == "DCM",])]
 # hist(as.numeric(.top_DCM))
-
 # ------------------------------------ 
 
 # Transpose
 gxData_t <- t(gxData)
-
-
 
 #-----------------------------------------------------------------------------
 #
@@ -114,30 +92,6 @@ sum(is.na(x_test))
 # LASSO regression
 #-----------------------------------------------------------------------------
 
-# # Another attempt at Lasso regression
-# # This time with repeated CV 
-# train_control <- trainControl(
-#   method = "repeatedcv",
-#   number = 10,             
-#   repeats = 5,           
-#   classProbs = TRUE,
-#   summaryFunction = twoClassSummary
-# )
-# 
-# lasso_model <- train(
-#   x = x_train,
-#   y = y_train,
-#   method = "glmnet",
-#   metric = "ROC",  # optimize for AUC
-#   trControl = train_control,
-#   tuneLength = 5
-# )
-# 
-# lasso_model$results
-# 
-
-
-
 # determine optimal values for lambda
 # by default, 10-fold cross validation
 lasso.fit <- cv.glmnet(x_train, y_train,
@@ -172,7 +126,7 @@ lasso.pred <- predict(lasso.fit,
 pred_class <- ifelse(lasso.pred > 0.5, "DCM", "NF")
 pred_class <- factor(pred_class, levels = levels(y_test))
 
-# Check histogram
+# Check histogram & confusion matrix
 summary(lasso.pred)
 hist(lasso.pred, breaks = 20)
 
@@ -183,7 +137,9 @@ roc_obj <- roc(y_test, as.numeric(lasso.pred))
 auc(roc_obj)
 plot(roc_obj)
 
-###### WARNING - GENAI!!!!!!! 
+###### WARNING - GENAI! ----------------------------------
+# Used for permutation testing
+
 # 1. Define the number of permutations
 n_permutations <- 30
 null_aucs <- numeric(n_permutations)
