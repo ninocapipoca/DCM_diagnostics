@@ -1,5 +1,5 @@
 .packages <- c("dplyr", "pROC", "caret", "glmnet", "missMethods",
-               "ggplot2")
+               "ggplot2", "e1071")
 lapply(.packages, require, character.only = TRUE)
 
 # Set working directory
@@ -255,7 +255,6 @@ cat(gene_names, file = "Data/key_genes_ALL_RF.txt")
 
 #-----------------------------------------------------------------------------
 # SVM
-# There is something wrong here
 #-----------------------------------------------------------------------------
 
 # Specify info for training
@@ -303,3 +302,51 @@ SVM.model_rand$results
 
 # Suggests that results obtained above are real, probably
 
+#-----------------------------------------------------------------------------
+# SVM-RFE
+# Source used:
+# https://www.geeksforgeeks.org/machine-learning/svm-feature-selection-in-r-with-example/
+#-----------------------------------------------------------------------------
+control <- rfeControl(functions = caretFuncs, 
+                      method = "cv", 
+                      number = 10,
+                      verbose = TRUE)
+
+svm_rfe <- rfe(x = x_train, 
+               y = y_train,
+               sizes = c(1:38),  # Number of features to select
+               preProc = c("center","scale"),
+               rfeControl = control,
+               method = "svmLinear")
+
+# Filter out the version using all genes
+svm_vars <- svm_rfe$variables |> 
+  filter(Variables != 20781)
+
+# Get gene list in order of importance
+svm_genes_ranked <- svm_vars |> 
+  group_by(var) |> 
+  summarise(
+    mean_Overall = mean(Overall),
+    frequency = n()
+  ) |> 
+  arrange(desc(mean_Overall))
+
+svm_genes_ranked
+
+# Plot performance (training)
+svm_rfe$results |> 
+  filter(Variables != 20781) |> 
+  ggplot(aes(x = Variables, y = Accuracy)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "SVM-RFE Performance",
+       x = "Number of Features",
+       y = "Accuracy (Cross-Fold Validation)") +
+  theme_gray()
+
+SVMRFE.pred <- predict(svm_rfe, x_test)
+.SVMRFE.pred2 <- predict(svm_rfe, x_train)
+
+
+confusionMatrix(.SVMRFE.pred2, y_train)
