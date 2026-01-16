@@ -146,6 +146,56 @@ lasso.fit <- cv.glmnet(x_train, y_train,
 
 plot(lasso.fit)
 
+# PRETTYPLOTS - Lasso performance and binomialdev
+lasso_cv_data <- data.frame(
+  lambda = lasso.fit$lambda,
+  cvm = lasso.fit$cvm,
+  cvsd = lasso.fit$cvsd,
+  num_features <- colSums(lasso.fit$glmnet.fit$beta != 0) # nonzero coeffs
+)
+
+lasso_perf <- ggplot(lasso_cv_data, aes(x = num_features, y = 1 - cvm)) +
+  geom_line(color = "purple") +
+  geom_point(color = "purple", size = 2) +
+  labs(
+    title = "Lasso Performance",
+    x = "Number of Features (genes)",
+    y = "Accuracy (Cross-Fold Validation)"
+  ) +
+  theme_pretty()
+
+lasso_perf
+
+ggsave("Figures/lasso_perf.png", plot = lasso_perf)
+
+lasso_tuning <- ggplot(lasso_cv_data, aes(x = -1*log(lambda), y = cvm)) +
+  geom_point(color = "purple", size = 2) +
+  geom_line(color = "purple", size = 0.8) +
+  geom_ribbon(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), 
+              fill = "purple", alpha = 0.2) +
+  geom_vline(xintercept = -1*log(lasso.fit$lambda.min), 
+             linetype = "dashed", color = "black") +
+  geom_vline(xintercept = -1*log(lasso.fit$lambda.1se), 
+             linetype = "dashed", color = "black") +
+  scale_x_continuous(
+    sec.axis = sec_axis(trans = ~., 
+                        breaks = -1*log(lasso.fit$lambda[seq(1, length(lasso.fit$lambda), by = 9)]),
+                        labels = colSums(lasso.fit$glmnet.fit$beta != 0)[seq(1, length(lasso.fit$lambda), by = 9)],
+                        name = "Number of Features")
+  ) +
+  labs(
+    title = "LASSO Tuning Curve",
+    x = "-Log(λ)",
+    y = "Binomial Deviance"
+  ) + theme_pretty()
+
+lasso_tuning
+
+ggsave("Figures/lasso_tuning.png", plot = lasso_tuning)
+
+# END OF PLOTS
+
+
 # Extract nonzero coefficients (important genes)
 coeffs <- coef(lasso.fit, s = "lambda.1se")
 .coeffs_df <- as.data.frame(as.matrix(coeffs))
@@ -292,7 +342,7 @@ RF_perf <- RF.model$results |>
 
 RF_perf
 
-ggsave("Figures/RF_perf.png", plot = RF)
+ggsave("Figures/RF_perf.png", plot = RF_perf)
 # END OF PLOT ---
 
 # Evaluate performance on test set
