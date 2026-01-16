@@ -211,15 +211,40 @@ abline(v = true_auc, col = "red", lwd = 2, lty = 2)
 text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
 
 #-----------------------------------------------------------------------------
-# SVM
+# Random forest
 #-----------------------------------------------------------------------------
 
-x_train_SVM <- as.data.frame(x_train) |> mutate(etiology = y_train)
-x_test_SVM <- as.data.frame(x_test) |> mutate(etiology = y_test)
+control <- trainControl(method = "cv", number = 5)
+
+RF.model <- train(x = x_train,
+                  y = y_train,
+                  method = "rf",
+                  trControl = control,
+                  ntree = 100)
+
+RF.model
+
+# Evaluate performance on test set
+SVM.predict <- predict(SVM.model, newdata = x_test)
+confusionMatrix(SVM.predict, y_test)
+
+# Check histogram
+hist(as.numeric(SVM.predict), breaks = 20)
+
+# Check ROC plot
+roc_obj <- roc(y_test, as.numeric(SVM.predict))
+auc(roc_obj)
+plot(roc_obj)
+
+
+#-----------------------------------------------------------------------------
+# SVM
+# There is something wrong here
+#-----------------------------------------------------------------------------
 
 # Specify info for training
 # classProbs is class probabilities
-control <- trainControl(method="cv",number=10, classProbs = TRUE)
+control <- trainControl(method="cv",number=5, classProbs = TRUE)
 
 SVM.model <- train(x = x_train,
                    y = y_train,
