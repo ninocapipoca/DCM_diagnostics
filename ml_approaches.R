@@ -1,3 +1,11 @@
+#==============================================================================
+# ml_approaches.R                                                             #
+#																	                                       		  #
+# Implementing various classifiers which provide rankings for genes,          #
+# allowing us to obtain a list of most relevant genes in DCM.                 #
+#=============================================================================#
+
+# Load packages
 .packages <- c("dplyr", "pROC", "caret", "glmnet", "missMethods",
                "ggplot2", "e1071", "gt", "gtsummary", "patchwork")
 lapply(.packages, require, character.only = TRUE)
@@ -388,7 +396,12 @@ ggsave("Figures/roc_RF.png", plot = roc_RF)
 
 # Export genes considered most important 
 # Picked 38 to export since LASSO has 38-gene list
-key_genes_all <- varImp(RF.model)$importance
+arrange(desc(mean_Overall))
+
+key_genes_all <- varImp(RF.model)$importance |> arrange(desc(Overall))
+View(key_genes_all) 
+write.csv(key_genes_all,"Data/genes_RF_ranked.csv")
+
 gene_names <- rownames(key_genes_all)
 cat(gene_names[1:38], file = "Data/key_genes_RF.txt")
 cat(gene_names, file = "Data/key_genes_ALL_RF.txt")
