@@ -1,8 +1,8 @@
-MAGNET_GX_2025/
+MAGNET_GX_2025
 Data/CPMS_SVA_corrected.csv
 Data/gxData_female_corr.csv
 Data/metadata_female_corr.csv
+*.log
 Data/gxData_female.csv
 Data/metadata_female.csv
 .Rhistory
-
