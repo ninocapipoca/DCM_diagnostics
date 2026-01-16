@@ -51,6 +51,7 @@ if (.female){
 # Filter gene data to include only participants also in metadata
 gxData <- data[, colnames(data) %in% rownames(metadata)]
 
+count <- metadata[metadata$etiology == "NF",]
 
 #-----------------------------------------------------------------------------
 # Cleanup
@@ -214,27 +215,42 @@ text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
 # Random forest
 #-----------------------------------------------------------------------------
 
-control <- trainControl(method = "cv", number = 5)
+control <- trainControl(method = "cv", number = 10, classProbs = TRUE)
 
 RF.model <- train(x = x_train,
                   y = y_train,
-                  method = "rf",
+                  method = "ranger", # for variable importance metrics
                   trControl = control,
-                  ntree = 100)
+                  ntree = 100,
+                  importance = "permutation")
 
 RF.model
 
 # Evaluate performance on test set
-SVM.predict <- predict(SVM.model, newdata = x_test)
-confusionMatrix(SVM.predict, y_test)
+# To get probability scores
+RF.prob <- predict(RF.model, newdata = x_test, type = "prob")
 
-# Check histogram
-hist(as.numeric(SVM.predict), breaks = 20)
+# Threshold 0.5 showed best performance
+pred_class <- ifelse(RF.prob$NF > 0.5, "NF", "DCM")
+pred_class <- factor(pred_class, levels = levels(y_test))
+
+confusionMatrix(pred_class, y_test)
+
+hist(RF.prob$DCM)
+hist(RF.prob$NF)
 
 # Check ROC plot
-roc_obj <- roc(y_test, as.numeric(SVM.predict))
+roc_obj <- roc(y_test, as.numeric(pred_class))
 auc(roc_obj)
 plot(roc_obj)
+
+# Export genes considered most important 
+# Picked 38 to export since LASSO has 38-gene list
+key_genes_all <- varImp(RF.model)$importance
+gene_names <- rownames(key_genes_all)
+cat(gene_names[1:38], file = "Data/key_genes_RF.txt")
+cat(gene_names, file = "Data/key_genes_ALL_RF.txt")
+
 
 
 #-----------------------------------------------------------------------------
@@ -257,7 +273,12 @@ SVM.model <- train(x = x_train,
 SVM.model
 
 # Evaluate performance on test set
-SVM.predict <- predict(SVM.model, newdata = x_test)
+SVM.predict <- predict(SVM.model, newdata = x_test, type = "prob")
+SVM.predict
+
+hist(SVM.predict$NF)
+hist(SVM.predict$DCM)
+
 confusionMatrix(SVM.predict, y_test)
 
 # Check histogram
@@ -268,47 +289,17 @@ roc_obj <- roc(y_test, as.numeric(SVM.predict))
 auc(roc_obj)
 plot(roc_obj)
 
+
+
 ###### WARNING - GENAI! ----------------------------------
-# Used for permutation testing. Adjusted for SVM.
-
-# 1. Define the number of permutations
-n_permutations <- 20
-null_aucs <- numeric(n_permutations)
-
-# 2. Get your "True" AUC first (from your original code)
-# Assuming roc_obj is already calculated from your script
-true_auc <- as.numeric(auc(roc_obj))
-
-set.seed(123) # For reproducibility of the shuffles
-for (i in 1:n_permutations) {
-  
-  # SHUFFLE the training labels
-  y_train_shuffled <- sample(y_train)
-  
-  # Fit model on shuffled labels
-  fit_shuffled <- train(x = x_train,
-                        y = y_train,
+# Try with randomly shuffled labels
+y_train_rand <- sample(y_train)
+SVM.model_rand <- train(x = x_train, y = y_train_rand,
                         method = "svmLinear2",
-                        tuneLength = 5,
                         preProc = c("center","scale"),
-                        metric='Accuracy', 
-                        trControl=control)
-  
-  # Predict on the (unshuffled) test set
-  pred_shuffled <- predict(fit_shuffled, newdata = x_test)
-  
-  # Calculate AUC for this null run
-  roc_shuffled <- roc(y_test, as.numeric(pred_shuffled), quiet = TRUE)
-  null_aucs[i] <- as.numeric(auc(roc_shuffled))
-  
-  # Optional: Print progress
-  if(i %% 10 == 0) cat("Completed", i, "permutations...\n")
-}
+                        trControl = control,
+                        metric = "Accuracy")
+SVM.model_rand$results
 
-# 3. Visualize the results
-hist(null_aucs, main = "Permutation Test (Null Distribution of AUC)",
-     xlab = "AUC with Shuffled Labels", xlim = c(0, 1), col = "lightblue")
-abline(v = true_auc, col = "red", lwd = 2, lty = 2)
-text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
-
+# Suggests that results obtained above are real, probably
 
