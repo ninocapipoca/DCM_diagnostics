@@ -1,5 +1,5 @@
 .packages <- c("dplyr", "pROC", "caret", "glmnet", "missMethods",
-               "ggplot2", "e1071")
+               "ggplot2", "e1071", "gt", "gtsummary")
 lapply(.packages, require, character.only = TRUE)
 
 # Set working directory
@@ -118,9 +118,8 @@ x_test <- impute_median(x_test, type = "columnwise")
 sum(is.na(x_train))
 sum(is.na(x_test))
 
-
 #-----------------------------------------------------------------------------
-# LASSO regression
+# LASSO classifier
 #-----------------------------------------------------------------------------
 
 # determine optimal values for lambda
@@ -134,18 +133,20 @@ plot(lasso.fit)
 
 # Extract nonzero coefficients (important genes)
 coeffs <- coef(lasso.fit, s = "lambda.1se")
-coeffs_nonzero <- coeffs[coeffs[,1] != 0]
-key_genes <- rownames(coeffs)[coeffs[,1] != 0]
-key_genes <- key_genes[key_genes != "(Intercept)"]
+.coeffs_df <- as.data.frame(as.matrix(coeffs))
 
-values <- coeffs_nonzero[2:length(coeffs_nonzero)]
+# create lasso_genes df
+lasso_genes <- .coeffs_df |>
+  filter(lambda.1se != 0) |>
+  filter(rownames(lasso_genes) != "(Intercept)") |>
+  arrange(desc(abs(lambda.1se)))
 
-key_genes_df <- data.frame(Gene = key_genes, lambda = values)
-key_genes_df <- key_genes_df[order(abs(key_genes_df$lambda)), ]
+# write to CSV, in order
+# rownames are the gene names
+write.csv(lasso_genes, file="Data/key_genes_ranked_lasso.csv")
 
-
-# Write to text file
-cat(key_genes, file = "Data/key_genes_lasso.txt")
+# Write names to text file
+cat(rownames(lasso_genes), file = "Data/key_genes_lasso.txt")
 
 # Test set predictions
 lasso.pred <- predict(lasso.fit,
@@ -161,7 +162,7 @@ pred_class <- factor(pred_class, levels = levels(y_test))
 summary(lasso.pred)
 hist(lasso.pred, breaks = 20)
 
-confusionMatrix(pred_class, y_test)
+cm_lasso <- confusionMatrix(pred_class, y_test)
 
 # Check ROC
 roc_obj <- roc(y_test, as.numeric(lasso.pred))
@@ -234,7 +235,7 @@ RF.prob <- predict(RF.model, newdata = x_test, type = "prob")
 pred_class <- ifelse(RF.prob$NF > 0.5, "NF", "DCM")
 pred_class <- factor(pred_class, levels = levels(y_test))
 
-confusionMatrix(pred_class, y_test)
+cm_RF <- confusionMatrix(pred_class, y_test)
 
 hist(RF.prob$DCM)
 hist(RF.prob$NF)
@@ -252,59 +253,20 @@ cat(gene_names[1:38], file = "Data/key_genes_RF.txt")
 cat(gene_names, file = "Data/key_genes_ALL_RF.txt")
 
 
-
-#-----------------------------------------------------------------------------
-# SVM
-#-----------------------------------------------------------------------------
-
-# Specify info for training
-# classProbs is class probabilities
-control <- trainControl(method="cv",number=5, classProbs = TRUE)
-
-SVM.model <- train(x = x_train,
-                   y = y_train,
-                   method = "svmLinear2", # linear kernel
-                   tuneLength = 5, # granularity of tuning param grid
-                   preProc = c("center","scale"), # preprocessing
-                   metric='Accuracy', 
-                   trControl=control)
-
-SVM.model
-
-# Evaluate performance on test set
-SVM.predict <- predict(SVM.model, newdata = x_test, type = "prob")
-SVM.predict
-
-hist(SVM.predict$NF)
-hist(SVM.predict$DCM)
-
-confusionMatrix(SVM.predict, y_test)
-
-# Check histogram
-hist(as.numeric(SVM.predict), breaks = 20)
-
-# Check ROC plot
-roc_obj <- roc(y_test, as.numeric(SVM.predict))
-auc(roc_obj)
-plot(roc_obj)
-
-
-
 ###### WARNING - GENAI! ----------------------------------
 # Try with randomly shuffled labels
 y_train_rand <- sample(y_train)
-SVM.model_rand <- train(x = x_train, y = y_train_rand,
-                        method = "svmLinear2",
-                        preProc = c("center","scale"),
-                        trControl = control,
-                        metric = "Accuracy")
-SVM.model_rand$results
-
-# Suggests that results obtained above are real, probably
+RF.model_rand <- train(x = x_train,
+                       y = y_train,
+                       method = "ranger", # for variable importance metrics
+                       trControl = control,
+                       ntree = 100,
+                       importance = "permutation")
+RF.model_rand$results
 
 #-----------------------------------------------------------------------------
 # SVM-RFE
-# Source used:
+# Source used for help:
 # https://www.geeksforgeeks.org/machine-learning/svm-feature-selection-in-r-with-example/
 #-----------------------------------------------------------------------------
 control <- rfeControl(functions = caretFuncs, 
@@ -346,7 +308,31 @@ svm_rfe$results |>
   theme_gray()
 
 SVMRFE.pred <- predict(svm_rfe, x_test)
-.SVMRFE.pred2 <- predict(svm_rfe, x_train)
+
+cm_SVMRFE <- confusionMatrix(SVMRFE.pred, y_test)
+
+# Check ROC plot
+roc_obj <- roc(y_test, as.numeric(SVMRFE.pred))
+auc(roc_obj)
+plot(roc_obj)
+
+#-----------------------------------------------------------------------------
+# Comparing performance
+# 
+#   Plots etc
+#-----------------------------------------------------------------------------
+
+lasso_table <- as.data.frame(cm_lasso$overall)
+RF_table <- as.data.frame(cm_RF$overall)
+SVMRFE_table <- as.data.frame(cm_SVMRFE$overall)
 
 
-confusionMatrix(.SVMRFE.pred2, y_train)
+summary_stats <- data.frame(
+  lasso = lasso_table,
+  RF = RF_table,
+  SVM_RFE = SVMRFE_table
+)
+
+summary_stats <- as.data.frame(t(summary_stats))
+
+write.csv(summary_stats, "Data/ML_summarystats.csv")
