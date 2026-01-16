@@ -396,7 +396,6 @@ ggsave("Figures/roc_RF.png", plot = roc_RF)
 
 # Export genes considered most important 
 # Picked 38 to export since LASSO has 38-gene list
-arrange(desc(mean_Overall))
 
 key_genes_all <- varImp(RF.model)$importance |> arrange(desc(Overall))
 View(key_genes_all) 
@@ -405,7 +404,6 @@ write.csv(key_genes_all,"Data/genes_RF_ranked.csv")
 gene_names <- rownames(key_genes_all)
 cat(gene_names[1:38], file = "Data/key_genes_RF.txt")
 cat(gene_names, file = "Data/key_genes_ALL_RF.txt")
-
 
 ###### WARNING - GENAI! ----------------------------------
 # Try with randomly shuffled labels
