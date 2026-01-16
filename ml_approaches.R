@@ -1,5 +1,5 @@
 .packages <- c("dplyr", "pROC", "caret", "glmnet", "missMethods",
-               "ggplot2", "e1071", "gt", "gtsummary")
+               "ggplot2", "e1071", "gt", "gtsummary", "patchwork")
 lapply(.packages, require, character.only = TRUE)
 
 # Set working directory
@@ -26,6 +26,21 @@ tryCatch({
   cat("A warning occurred:", conditionMessage(w), "\n")
   print("Try downloading the file & adding it to the Data folder: https://www.dropbox.com/s/eihem5fbnkg7bpm/phenoData.csv?dl=0")
 })
+
+# ----------------------------------------------------------------------------
+# Define ggplot theme
+# ----------------------------------------------------------------------------
+
+theme_pretty <- function() {
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 14),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 11),
+    panel.background = element_rect(fill = "#f0f0f0"),
+    panel.grid.major = element_line(colour = "#c5c5c5"),
+    panel.grid.minor = element_blank()
+  )
+}
 
 #-----------------------------------------------------------------------------
 # Preprocessing
@@ -162,12 +177,50 @@ pred_class <- factor(pred_class, levels = levels(y_test))
 summary(lasso.pred)
 hist(lasso.pred, breaks = 20)
 
+# PRETTYPLOT - Histogram lasso.pred ---
+lassopred_hist <- ggplot(lasso.pred, aes(x = lambda.1se)) + 
+  geom_histogram(fill = "purple") +
+  labs(
+    title = "Distribution of LASSO coefficients",
+    x = "Coefficient value (lambda.1se)"
+  ) +
+  theme_pretty()
+
+lassopred_hist
+
+ggsave("Figures/lassopred_hist.png", plot = lassopred_hist)
+# END OF PLOT ---
+
 cm_lasso <- confusionMatrix(pred_class, y_test)
 
 # Check ROC
 roc_obj <- roc(y_test, as.numeric(lasso.pred))
 auc(roc_obj)
 plot(roc_obj)
+
+# PRETTYPLOT - Lasso ROC ---
+roc_data <- data.frame(
+  fpr = 1 - roc_obj$specificities,
+  tpr = roc_obj$sensitivities
+)
+
+roc_lasso <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
+  geom_path(size = 0.5, color = "purple") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
+  labs(
+    title = "Lasso ROC Curve",
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    subtitle = paste("AUC =", round(auc(roc_obj), 3))
+  ) +
+  coord_equal() +
+  theme_pretty()
+
+roc_lasso
+
+ggsave("Figures/roc_lasso.png", plot = roc_lasso)
+# END OF PLOT ---
+
 
 ###### WARNING - GENAI! ----------------------------------
 # Used for permutation testing
@@ -227,6 +280,21 @@ RF.model <- train(x = x_train,
 
 RF.model
 
+# PRETTYPLOT - RF Performance ---
+RF_perf <- RF.model$results |> 
+  ggplot(aes(x = mtry, y = Accuracy, color = splitrule, group = splitrule)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "RF Performance",
+       x = "Number of Variable Splits",
+       y = "Accuracy (Cross-Fold Validation)") +
+  theme_pretty()
+
+RF_perf
+
+ggsave("Figures/RF_perf.png", plot = RF)
+# END OF PLOT ---
+
 # Evaluate performance on test set
 # To get probability scores
 RF.prob <- predict(RF.model, newdata = x_test, type = "prob")
@@ -244,6 +312,29 @@ hist(RF.prob$NF)
 roc_obj <- roc(y_test, as.numeric(pred_class))
 auc(roc_obj)
 plot(roc_obj)
+
+# PRETTYPLOT - ROC RF ---
+roc_data <- data.frame(
+  fpr = 1 - roc_obj$specificities,
+  tpr = roc_obj$sensitivities
+)
+
+roc_RF <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
+  geom_path(size = 0.5, color = "purple") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
+  labs(
+    title = "RF ROC Curve",
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    subtitle = paste("AUC =", round(auc(roc_obj), 3))
+  ) +
+  coord_equal() +
+  theme_pretty()
+
+roc_RF
+
+ggsave("Figures/roc_RF.png", plot = roc_RF)
+# END OF PLOT ---
 
 # Export genes considered most important 
 # Picked 38 to export since LASSO has 38-gene list
@@ -296,16 +387,21 @@ svm_genes_ranked <- svm_vars |>
 
 svm_genes_ranked
 
-# Plot performance (training)
-svm_rfe$results |> 
+# PRETTYPLOT - SVM-RFE Performance ---
+svm_perf <- svm_rfe$results |> 
   filter(Variables != 20781) |> 
   ggplot(aes(x = Variables, y = Accuracy)) +
-  geom_line() +
-  geom_point() +
+  geom_line(color = "purple") +
+  geom_point(color = "purple") +
   labs(title = "SVM-RFE Performance",
-       x = "Number of Features",
+       x = "Number of Features (genes)",
        y = "Accuracy (Cross-Fold Validation)") +
-  theme_gray()
+  theme_pretty()
+
+svm_perf
+
+ggsave("Figures/sva_perf.png", plot = svm_perf)
+# END OF PLOT ---
 
 SVMRFE.pred <- predict(svm_rfe, x_test)
 
@@ -316,11 +412,40 @@ roc_obj <- roc(y_test, as.numeric(SVMRFE.pred))
 auc(roc_obj)
 plot(roc_obj)
 
+# PRETTYPLOT - SVM RFE ROC ---
+roc_data <- data.frame(
+  fpr = 1 - roc_obj$specificities,
+  tpr = roc_obj$sensitivities
+)
+
+roc_SVM <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
+  geom_path(size = 0.5, color = "purple") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
+  labs(
+    title = "SVM-RFE ROC curve",
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    subtitle = paste("AUC =", round(auc(roc_obj), 3))
+  ) +
+  coord_equal() +
+  theme_pretty()
+
+roc_SVM
+
+ggsave("Figures/roc_SVM-RFE.png", plot = roc_SVM)
+
+# END OF PLOT ---
+
 #-----------------------------------------------------------------------------
 # Comparing performance
 # 
 #   Plots etc
 #-----------------------------------------------------------------------------
+
+# COMBINED PLT ---
+combined_ROC <- roc_lasso + roc_RF + roc_SVM 
+ggsave("Figures/combined_ROCs.png", plot = combined_ROC)
+# END ---
 
 lasso_table <- as.data.frame(cm_lasso$overall)
 RF_table <- as.data.frame(cm_RF$overall)
