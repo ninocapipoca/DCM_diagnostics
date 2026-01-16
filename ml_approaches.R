@@ -223,10 +223,67 @@ control <- trainControl(method="cv",number=10, classProbs = TRUE)
 
 SVM.model <- train(x = x_train,
                    y = y_train,
-                   method = "svmRadial", # radial kernel
-                   tuneLength = 8, # granularity of tuning param grid
+                   method = "svmLinear2", # linear kernel
+                   tuneLength = 5, # granularity of tuning param grid
                    preProc = c("center","scale"), # preprocessing
                    metric='Accuracy', 
                    trControl=control)
+
+SVM.model
+
+# Evaluate performance on test set
+SVM.predict <- predict(SVM.model, newdata = x_test)
+confusionMatrix(SVM.predict, y_test)
+
+# Check histogram
+hist(as.numeric(SVM.predict), breaks = 20)
+
+# Check ROC plot
+roc_obj <- roc(y_test, as.numeric(SVM.predict))
+auc(roc_obj)
+plot(roc_obj)
+
+###### WARNING - GENAI! ----------------------------------
+# Used for permutation testing. Adjusted for SVM.
+
+# 1. Define the number of permutations
+n_permutations <- 20
+null_aucs <- numeric(n_permutations)
+
+# 2. Get your "True" AUC first (from your original code)
+# Assuming roc_obj is already calculated from your script
+true_auc <- as.numeric(auc(roc_obj))
+
+set.seed(123) # For reproducibility of the shuffles
+for (i in 1:n_permutations) {
+  
+  # SHUFFLE the training labels
+  y_train_shuffled <- sample(y_train)
+  
+  # Fit model on shuffled labels
+  fit_shuffled <- train(x = x_train,
+                        y = y_train,
+                        method = "svmLinear2",
+                        tuneLength = 5,
+                        preProc = c("center","scale"),
+                        metric='Accuracy', 
+                        trControl=control)
+  
+  # Predict on the (unshuffled) test set
+  pred_shuffled <- predict(fit_shuffled, newdata = x_test)
+  
+  # Calculate AUC for this null run
+  roc_shuffled <- roc(y_test, as.numeric(pred_shuffled), quiet = TRUE)
+  null_aucs[i] <- as.numeric(auc(roc_shuffled))
+  
+  # Optional: Print progress
+  if(i %% 10 == 0) cat("Completed", i, "permutations...\n")
+}
+
+# 3. Visualize the results
+hist(null_aucs, main = "Permutation Test (Null Distribution of AUC)",
+     xlab = "AUC with Shuffled Labels", xlim = c(0, 1), col = "lightblue")
+abline(v = true_auc, col = "red", lwd = 2, lty = 2)
+text(true_auc, 0.5, "True AUC", pos = 4, col = "red")
 
 
