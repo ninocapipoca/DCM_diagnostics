@@ -335,4 +335,3 @@ for (ontology in c("BP", "CC", "MF")) {
   print("Downreg dotplot done")
 }
 
-
