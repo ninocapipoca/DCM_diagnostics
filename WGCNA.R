@@ -5,20 +5,23 @@
 #=============================================================================#
 
 # Load packages ------------------------------------------------
-library(ggplot2)
+library(rstudioapi)
 library(tidyr)
 library(dplyr)
-library(impute)
-library(preprocessCore)
+library(missMethods)
+library(ggplot2)
+
 library(WGCNA)
+allowWGCNAThreads()
+library(magick)
+
+library(RCy3)
 library(readr)
 library(readxl)
-library(RCy3)
-library(rstudioapi)
-library(missMethods)
 
-allowWGCNAThreads()
-
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(enrichplot)
 
 #-----------------------------------------------------------------------------#
 # Data import (same as in DataPreparationExploratoryAnalysis.R)
@@ -29,10 +32,10 @@ setwd(directory_path)
 
 # Load gene expression data and participant information (metadata)
 # NOTE - *SVA-corrected* gene expression dataset (log2-transformed CPM)
-gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1) |> 
-  log2(gxData_all + 1) |>  #Log2 transform
-  impute_median(gxData_all, type = "columnwise")
-metadata_all <- read.csv("MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
+gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
+gxData_all <- log2(gxData_all + 1)  #Log2 transform
+gxData_all <- impute_median(gxData_all, type = "columnwise")
+metadata_all <- read.csv("Data/MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
 # Filter out only female participants who either have DCM or are healthy
 metadata <- metadata_all |> 
@@ -44,12 +47,9 @@ gxData <- gxData_all[, colnames(gxData_all) %in% rownames(metadata)]
 # Turn all character-type columns into factors (categorical variables)
 metadata <- metadata |> mutate_if(is.character, as.factor)
 
-# TODO - Possibly remove outliers (after talking to Aaron on Monday)
-
 #-----------------------------------------------------------------------------#
 # Weighed Gene-Coexpression Network Analysis (WGCNA)
 #-----------------------------------------------------------------------------#
-
 # Basic quality check
 gsg <- goodSamplesGenes(gxData, verbose = 3)
 
@@ -76,7 +76,6 @@ all(rownames(metadata) == rownames(gxData_t))
 
 
 # Encoding categorical variables ---------------------------------------------#
-
 # Remove unnecessary columns
 metadata$gender <- NULL
 metadata$disease_race <- NULL
@@ -133,6 +132,7 @@ lapply(list(metadata$etiology,
             metadata$TIN.median.), as.numeric)
 
 # Make all variables numeric
+metadata$tissue_source <- NULL # gives problems when using mutate_all
 metadata <- mutate_all(metadata, function(x) as.numeric(as.character(x)))
 
 # Display trait summary
@@ -141,18 +141,19 @@ summary(metadata)
 # Clean up memory
 collectGarbage()
 
-# Sample clustering and trait visualisation ----------------------------------#
 
+# Sample clustering and trait visualisation ----------------------------------#
 # Hierarchical clustering of samples based on gene expression
 sampleTree <- hclust(dist(gxData_t), method = "average")
 
-meta.traits <- metadata[, c("etiology", "age", "race", "LVEF", "VTVF", "Hypertension", "Diabetes")]
+meta.traits <- `colnames<-`(
+  metadata[, c("etiology", "age", "race", "LVEF", "VTVF", "Hypertension", "Diabetes")],
+  c("DCM", "Age", "Race", "LVEF", "VTVF", "Hypertension", "Diabetes"))
 traitColors <- numbers2colors(meta.traits, signed = FALSE) # Convert those traits to colors
 
 # Plot and save dendrogram with trait heatmap
 dendrogram_path <- file.path("/Users/mikiverme/Desktop/DCM_diagnostics", "dendrogram_heatmap.png")
-png(filename = dendrogram_path, width = 1200, height = 900, res = 150)
-
+png(filename = dendrogram_path, width = 2400, height = 1800, res = 300)
 plotDendroAndColors(
   sampleTree, 
   traitColors,
@@ -160,12 +161,10 @@ plotDendroAndColors(
   cex.dendroLabels = 0.5, 
   main = "Sample Dendrogram and Trait Heatmap"
 )
-
 dev.off()
 
 
 # Network construction - Soft-thresholding -----------------------------------#
-
 # Test different powers
 powers <- seq(1, 15, by = 1)
 sft <- pickSoftThreshold(gxData_t, powerVector = powers, verbose = 5) # Analyze network topology for each power
@@ -173,26 +172,32 @@ sft <- pickSoftThreshold(gxData_t, powerVector = powers, verbose = 5) # Analyze 
 save(sft, file = "WGCNA-sft.RData")
 sft$fitIndices # display result in table
 
-targetPower.test <- 4
+# Test sft power mean connectivity
+targetPower.test <- 5
 meanConnectivity <- sft$fitIndices[               # Test of mean connectivity for power '4'
   sft$fitIndices[, "Power"] == targetPower.test,
   "mean.k."
 ]
+meanConnectivity
 
-# Visualise power selection
-# TODO - Fix figures ! 
-par(mfrow = c(1, 2))
 
-# Plot 1: Scale-free topology fit (R²) vs. power
+# Visualise power selection and degree distribution --------
+
+png(filename = "powerplots.png", width = 2400, height = 800, res = 300)
+
+op <- par(no.readonly = TRUE)
+par(mfrow = c(1, 3), mar = c(5, 4, 4, 2) + 0.1)
+
+# Plot 1: Scale-free topology fit
 plot(
   sft$fitIndices[, 1], 
   -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2], 
   xlab = "Soft Threshold (power)",
   ylab = "Scale Free Topology Model Fit (signed R²)",
-  type = "n", 
+  type = "n",
   main = "Scale Independence"
 )
-
+title(main = "A)", adj = 0, col.main = "grey50", font.main = 2, cex.main = 1.5)
 text(
   sft$fitIndices[, 1], 
   -sign(sft$fitIndices[, 3]) * sft$fitIndices[, 2], 
@@ -200,11 +205,9 @@ text(
   cex = 0.9,
   col = "red"
 )
+abline(h = 0.85, col = "red", lty = 2)
 
-abline(h = 0.85, col = "red", lty = 2) # Horizontal line at R² = 0.85 (recommended threshold)
-
-
-# Plot 2: Mean connectivity vs. power
+# Plot 2: Mean connectivity
 plot(
   sft$fitIndices[, 1], 
   sft$fitIndices[, 5], 
@@ -213,6 +216,7 @@ plot(
   type = "n", 
   main = "Mean Connectivity"
 )
+title(main = "B)", adj = 0, col.main = "grey50", font.main = 2, cex.main = 1.5)
 text(
   sft$fitIndices[, 1], 
   sft$fitIndices[, 5], 
@@ -221,21 +225,38 @@ text(
   col = "red"
 )
 
+# Plot 3: Degree Distribution
+hist(
+  network.metrics$Degree,
+  breaks = 30,
+  main = "Degree Distribution",
+  xlab = "Degree",
+  ylab = "Number of Nodes"
+)
+title(main = "C)", adj = 0, col.main = "grey50", font.main = 2, cex.main = 1.5)
+
+par(op)
+dev.off()
+
 
 # Build co expression network ------------------------------------------------#
+rm(cor)
+
 # Construct the network and identify modules
 net <- blockwiseModules(
-  gxData_t, 
-  power = 4,                      # Soft-thresholding power
-  TOMType = "unsigned",           # Topological Overlap Matrix type
-  minModuleSize = 30,             # Minimum module size
-  reassignThreshold = 0,          # Gene reassignment threshold
-  mergeCutHeight = 0.25,          # Module merging threshold
-  numericLabels = TRUE,           # Use numbers instead of colors initially
+  gxData_t,
+  power = 5,
+  TOMType = "unsigned",
+  minModuleSize = 30,
+  reassignThreshold = 0,
+  mergeCutHeight = 0.25,
+  numericLabels = TRUE,
   pamRespectsDendro = FALSE,
   saveTOMs = TRUE,
-  saveTOMFileBase = "expTOM", 
-  verbose = 3
+  saveTOMFileBase = "expTOM",
+  verbose = 3,
+  corType = "pearson",
+  corOptions = list(use = "pairwise.complete.obs")
 )
 
 cat("  - Number of modules found:", length(unique(net$colors)), "\n")
@@ -252,6 +273,7 @@ mergedColors <- labels2colors(net$colors)
 
 # GENE BLOCK 1
 # Plot gene dendrogram with module colors below per block
+png("block1_dendrogram.png", width = 1200, height = 600, res = 150)                    
 plotDendroAndColors(
   net$dendrograms[[1]], 
   mergedColors[net$blockGenes[[1]]],
@@ -262,8 +284,10 @@ plotDendroAndColors(
   guideHang = 0.05,
   main = "Gene Dendrogram and Module Colors (block 1)"
 )
+dev.off()
 
 # GENE BLOCK 2
+png("block2_dendrogram.png", width = 1200, height = 600, res = 150)                    
 plotDendroAndColors(
   net$dendrograms[[2]], 
   mergedColors[net$blockGenes[[2]]],
@@ -274,8 +298,10 @@ plotDendroAndColors(
   guideHang = 0.05,
   main = "Gene Dendrogram and Module Colors (block 2)"
 )
+dev.off()
 
 # GENE BLOCK 3
+png("block3_dendrogram.png", width = 1200, height = 600, res = 150)                    
 plotDendroAndColors(
   net$dendrograms[[3]], 
   mergedColors[net$blockGenes[[3]]],
@@ -286,6 +312,42 @@ plotDendroAndColors(
   guideHang = 0.05,
   main = "Gene Dendrogram and Module Colors (block 3)"
 )
+dev.off()
+
+# GENE BLOCKS TOGETHER (Dendrograms)
+save_block <- function(block_num, label) {
+  png(paste0("block", block_num, ".png"), width = 1200, height = 600, res = 150)
+  
+  plotDendroAndColors(
+    net$dendrograms[[block_num]],
+    mergedColors[net$blockGenes[[block_num]]],
+    "Module colors",
+    dendroLabels = FALSE,
+    hang = 0.03,
+    addGuide = TRUE,
+    guideHang = 0.05,
+    main = ""
+  )
+  
+  # Draw label on top-left, in front of plot
+  par(xpd = NA)
+  text(0, 6, label, adj = c(0,1), col = "grey50", font = 2, cex = 1.5)
+  
+  dev.off()
+}
+
+save_block(1, "A)")
+save_block(2, "B)")
+save_block(3, "C)")
+
+
+# Read images
+b1 <- image_read("block1.png")
+b2 <- image_read("block2.png")
+b3 <- image_read("block3.png")
+
+combined <- c(b1, b2, b3) %>% image_append(stack = TRUE)
+image_write(combined, "combined_blocks.png")
 
 # Store module information
 moduleLabels <- net$colors
@@ -304,9 +366,6 @@ module.df <- module.df[order(module.df$`Number of Genes`, decreasing = TRUE), ]
 print(module.df)
 
 
-# TODO - Save the dendrograms
-
-
 # Module Trait Relationships ----------------------CORRECTED-------------------#
 
 # Calculate module eigengenes (MEs) - first principal component of each module
@@ -317,7 +376,7 @@ MEs0 <- moduleEigengenes(gxData_t, moduleColors)$eigengenes
 MEs <- orderMEs(MEs0)
 
 # Select traits of interest explicitly
-traits_of_interest <- metadata[, c("etiology", "age", "race", "LVEF", "Diabetes", "Hypertension")]  # adjust as needed
+traits_of_interest <- metadata[, c("etiology", "age", "race", "LVEF", "VTVF", "Diabetes", "Hypertension")]  # adjust as needed
 
 # Convert all traits to numeric
 traits_of_interest <- mutate_all(traits_of_interest, function(x) as.numeric(as.character(x)))
@@ -341,8 +400,8 @@ ranked.modules <- ranked.modules[order(-abs(ranked.modules$Correlation)), ]
 
 print(ranked.modules)
 
-# Subset the top 6 ranked modules (for later)
-top5.modules <- ranked.modules$Module[c(1, 2, 4, 5, 6)]
+# Subset the top 5 ranked modules (for later)
+top5.modules <- ranked.modules$Module[!ranked.modules$Module %in% c("MEdarkgrey", "MEgrey")][1:5]
 
 
 # Heatmap ---------------------------------------------------------------------#
@@ -372,15 +431,16 @@ textMatrix_sub <- matrix(
 )
 
 # Create heatmap
+ySymbols_sub <- c("Blue", "Turquoise", "Brown", "Yellow", "Green")  # example manual names
 yLabels_sub <- top5.modules
-ySymbols_sub <- top5.modules
+xLabels_sub <- c("DCM", "Age", "Race", "LVEF", "VTVF", "Hypertension", "Diabetes")  # match order of columns in moduleTraitCor_sub
 
-png("top5_modules_heatmap.png", width = 1000, height = 800, res = 150)
+png("top5_modules_heatmap.png", width = 2000, height = 1600, res = 300)
 par(mar = c(8, 8.5, 3, 3))  # Adjust margins for your plot
 
 labeledHeatmap(
   Matrix = moduleTraitCor_sub,
-  xLabels = colnames(moduleTraitCor_sub),
+  xLabels = xLabels_sub,
   yLabels = yLabels_sub,
   ySymbols = ySymbols_sub,
   colorLabels = FALSE,
@@ -395,12 +455,11 @@ labeledHeatmap(
 
 dev.off()
 
-# TODO - Label the correlations legend (right, red/white/blue)
 
 # Gene module membership and significance ------------------------------------#
 
 # Define top modules (from  ranked.modules output)
-modules <- c("blue", "turquoise", "darkslateblue")
+modules <- c("blue", "turquoise", "midnightblue")
 modNames <- substring(names(MEs), 3)  # removes "ME" prefix
 
 # Calculate module membership (MM) for each gene (correlation with MEs)
@@ -418,27 +477,42 @@ GSPvalue <- as.data.frame(corPvalueStudent(as.matrix(geneTraitSignificance), nSa
 names(geneTraitSignificance) <- paste("GS.", names(metadata$etiology), sep = "")
 names(GSPvalue) <- paste("p.GS.", names(metadata$etiology), sep = "")
 
-# Plot MM vs GS only for the top modules
-par(mfrow = c(1, length(modules)))
+# Plot
+labels <- c("A)", "B)", "C)")
+png("MM_vs_GS_top_modules.png", width = 2400, height = 1000, res = 300)
+par(mfrow = c(1, length(modules)), mar = c(5, 5, 4, 2))
 
-for (module in modules) {
+for (i in seq_along(modules)) {
+  module <- modules[i]
   column <- match(module, modNames)
   moduleGenes <- moduleColors == module
   
-  verboseScatterplot(
+  # Base R scatter plot
+  plot(
     abs(geneModuleMembership[moduleGenes, column]),
     abs(geneTraitSignificance[moduleGenes, 1]),
-    xlab = paste("Module Membership (MM) in", module, "module"),
-    ylab = "Gene Significance (GS) for disease",
-    main = paste("MM vs. GS for", module),
-    cex.main = 1.2, 
-    cex.lab = 1, 
-    cex.axis = 1, 
-    col = module
+    xlab = "Module Membership (MM)",
+    ylab = "Gene Significance (GS) for DCM",
+    main = paste0(toupper(substring(module,1,1)), substring(module,2)),
+    col = module,
+    cex = 1,
+    cex.main = 1.3
+  )
+  
+  # Add custom A)/B)/C) label in top-left, above main title
+  title(
+    main = labels[i],
+    adj = 0,           # left-align
+    col.main = "grey50",
+    font.main = 2,
+    cex.main = 1.5,
+    line = 1.4
   )
 }
 
-# Build gene information table including only top modules
+dev.off()
+
+# Build gene information table including only top modules --------------------#
 geneInfo0 <- data.frame(
   Gene.ID = colnames(gxData_t),
   moduleColor = moduleColors,
@@ -474,128 +548,194 @@ geneInfo <- geneInfo[geneOrder, ]
 # Save to CSV file
 write.csv(geneInfo, file = "geneInfo_topModules.csv", row.names = FALSE)
 
+geneInfo.top50 <- geneInfo[1:50, c("Gene.ID", "GS.")]
+write.csv(geneInfo.top50, file = "geneInfo_top50.csv", row.names = FALSE)
 
 #-----------------------------------------------------------------------------#
 # Cytoscape 
 #-----------------------------------------------------------------------------#
+RCy3::cytoscapePing()
 
-# Test connection to Cytoscape and install stringApp if needed
-
-RCy3::cytoscapePing() # Test connection to Cytoscape
-
-if (!grepl("status: Installed", RCy3::getAppStatus("stringApp"))) {
+if (!grepl("Installed", RCy3::getAppStatus("stringApp"))) {
   RCy3::installApp("stringApp")
-  cat("✓ stringApp installed\n")
 }
 
-# Create PPI Network ---------------------------------------------------------#
-
-# BLUE MODULE gene selection
+# STRING network (BLUE MODULE) -----------------------------------------------#
 genes.blue <- geneInfo[geneInfo$moduleColor == "blue", ]$Gene.ID
 
-# Format gene list for STRING database query via Cytoscape
 query <- format_csv(
-  as.data.frame(genes.blue), 
-  col_names = FALSE, 
-  quote_escape = "double", 
-  eol = ","
-)
+  as.data.frame(genes.blue),
+  col_names = FALSE,
+  quote_escape = "double",
+  eol = ",")
 
-# Query STRING protein-protein interaction network for blue module genes
 commandsPOST(
   paste0(
-    'string protein query cutoff=0.4 newNetName="Blue Module PPI Network" query="',
-    query,
-    '" limit=0'
-  )
-)
+    'string protein query cutoff=0.4 ',
+    'newNetName="Blue Module PPI Network" ',
+    'query="', query, '" ',
+    'limit=0'))
 
-# Load differential expression dataset (female DCM vs female control)
 dataset <- read_excel("Data/DCM_diffexp_corr.xlsx")
 
-# Load dataset onto Cytoscape network nodes, matching by Ensembl Gene ID
 loadTableData(
-  dataset, 
-  data.key.column = "Ensembl_GeneID", 
-  table.key.column = "query term"
-)
+  dataset,
+  data.key.column  = "Ensembl_GeneID",
+  table.key.column = "query term")
 
-# Visual style setup ---------------------------------------------------------#
+# Network topology analysis & metrics ----------------------------------------#
+analyzeNetwork(directed = FALSE)
+node.table <- getTableColumns("node")
 
-# Default Cytoscape style (base for customisation)
+network.metrics <- node.table[, c(
+  "display name",
+  "query term",
+  "Degree",
+  "BetweennessCentrality",
+  "ClusteringCoefficient"
+)]
+
+network.metrics <- network.metrics[
+  order(network.metrics$Degree, decreasing = TRUE),]
+
+# Visual Style set up --------------------------------------------------------#
 RCy3::copyVisualStyle("default", "network_analysis_style")
 
-# Map node size to Degree centrality (nodes with more connections appear larger)
+# Node size = Degree (hub genes larger)
 setNodeSizeMapping(
   table.column = "Degree",
-  table.column.values = c(min(node.table$Degree), max(node.table$Degree)),
-  sizes = c(30, 150),
+  table.column.values = range(node.table$Degree, na.rm = TRUE),
+  sizes = c(20, 120),
   mapping.type = "continuous",
   style.name = "network_analysis_style"
 )
 
-# Map node color continuously to female log fold change (DCM vs control)
-# Blue = downregulated, White = no change, Red = upregulated
 RCy3::setNodeColorMapping(
   table.column = "logFC",
   mapping.type = "continuous",
-  colors = c("#67A9CF", "#FFFFFF", "#EF8A62"),  # Blue - White - Red
-  style.name = "network_analysis_style",
+  colors = c("#67A9CF", "#FFFFFF", "#EF8A62"),
   table.column.values = c(
-    min(dataset$logFC, na.rm=TRUE), 
-    0, 
-    max(dataset$logFC, na.rm=TRUE)
-  )
+    min(dataset$logFC, na.rm = TRUE),
+    0,
+    max(dataset$logFC, na.rm = TRUE)
+  ),
+  style.name = "network_analysis_style"
 )
 
-# Map node labels to gene names for clarity
-RCy3::setNodeLabelMapping("display name", style.name="network_analysis_style")
+# Node labels
+RCy3::setNodeLabelMapping(
+  table.column = "display name",
+  style.name = "network_analysis_style"
+)
 
-# Apply the customized visual style to the network
 RCy3::setVisualStyle("network_analysis_style")
 
-cat("✓ Visual style applied!\n")
-cat("  - Node size = Degree (connectivity)\n")
-cat("  - Node color = Female logFC (expression change)\n")
+# Hub Gene inspection ---------------------------------------------------------#
+hist(network.metrics$Degree, breaks = 30, main = "Degree Distribution")
+head(network.metrics, 10)
 
-# --- Network topology analysis ---------------------------------------------
+betweenness.genes <- network.metrics[order(network.metrics$BetweennessCentrality, decreasing = TRUE),]
+head(betweenness.genes, 10)
 
-# Calculate network topology metrics: degree, betweenness centrality, clustering coefficient
-# Retrieve node attribute table with calculated metrics
-analyzeNetwork(directed = FALSE)
-node.table <- getTableColumns(table = "node")
-
-# Extract key metrics for downstream analysis
-network.metrics <- node.table[, c(
-  "display name",
-  "Degree",
-  "BetweennessCentrality", 
-  "ClusteringCoefficient"
-)]
-
-# Sort nodes by degree to identify hub genes
-network.metrics <- network.metrics[order(network.metrics$Degree, decreasing = TRUE), ]
-
-# Visualize degree distribution across the network
-hist(network.metrics$Degree, breaks=30, main = "Degree Distribution")
-
-# Display top 10 hub genes based on degree
-print(head(network.metrics, 10))
-
-# Print overall network statistics
+# Network statistics ---------------------------------------------------------#
 cat("\nNetwork Statistics:\n")
 cat("  - Total nodes:", nrow(node.table), "\n")
 cat("  - Average degree:", round(mean(node.table$Degree, na.rm = TRUE), 2), "\n")
-cat("  - Network density:", round(mean(node.table$Degree, na.rm = TRUE) / (nrow(node.table) - 1), 3), "\n")
-cat("  - Average clustering coefficient:", round(mean(node.table$ClusteringCoefficient, na.rm = TRUE), 3), "\n")
+cat("  - Network density:",
+  round(mean(node.table$Degree, na.rm = TRUE) / (nrow(node.table) - 1), 3),
+  "\n")
+cat("  - Average clustering coefficient:",
+  round(mean(node.table$ClusteringCoefficient, na.rm = TRUE), 3),
+  "\n")
 
-# Save network metrics to CSV file for record keeping
-write.csv(network.metrics, file = "blue_module_network_metrics.csv", row.names = FALSE)
+# Save outputs ---------------------------------------------------------------#
+write.csv(
+  network.metrics,
+  file = "blue_module_network_metrics.csv",
+  row.names = FALSE
+)
 
-# --- Export network image ---------------------------------------------------
-
-exportImage(
+exportImage(                              # image of Cytoscape network
   filename = "blue_module_network.png",
   type = "PNG",
   zoom = 200
 )
+
+
+
+#-----------------------------------------------------------------------------#
+# GO Enrichment of WGCNA Genes
+#-----------------------------------------------------------------------------#
+
+# Convert Ensembl IDs to Entrez Gene IDs for GO analysis
+genes.blue.entrez <- bitr(
+    genes.blue,
+    fromType = "ENSEMBL",
+    toType = "ENTREZID",
+    OrgDb = org.Hs.eg.db
+  )
+
+
+cat("Genes mapped for GO enrichment:", nrow(genes.blue.entrez), "/", length(genes.blue), "\n\n")
+
+go.bp <- enrichGO(
+  gene = genes.blue.entrez$ENTREZID,
+  OrgDb = org.Hs.eg.db,
+  ont = "BP",
+  pAdjustMethod = "BH",
+  pvalueCutoff = 0.05,
+  qvalueCutoff = 0.05,
+  readable = TRUE
+)
+
+
+# Convert to data frame for inspection
+go.bp.res <- as.data.frame(go.bp)
+
+cat("GO enrichment analysis results:\n") # Summary statistics
+cat("  - Significant processes:", nrow(go.bp.res), "\n")
+
+head(go.bp.res)
+
+go.bp.res$Result
+
+# Tree plot showing enriched pathways
+num.bp <- min(20, nrow(go.bp.res))  # Do I need this line as well?
+
+p <- treeplot(go.bp.sim, showCategory = 15) +
+  theme(
+    axis.text.y = element_blank(),   # <-- removes ONLY node labels
+    axis.ticks.y = element_blank()   # optional, cleaner
+  )
+
+png("GO_BP_tree.png", width = 4000, height = 4000, res = 300)
+print(p)
+dev.off()
+
+
+# Extract gene list ----------------------------------------------------------#
+go_res <- as.data.frame(go.bp)
+sig_go_terms <- go_res[go_res$p.adjust < 0.05, ]
+
+# Extract genes from all significant GO terms
+genes_entrez_list <- unlist(
+  strsplit(sig_go_terms$geneID, split = "/"))
+
+genes_entrez_unique <- unique(genes_entrez_list) # Remove duplicates
+
+
+genes_entrez_unique <- genes_entrez_unique[genes_entrez_unique != "" & !is.na(genes_entrez_unique)]
+genes_entrez_unique <- as.character(genes_entrez_unique)
+
+
+# Convert Entrez IDs back to gene symbols for readability
+sig_genes_symbols <- bitr(
+  genes_entrez_unique,
+  fromType = "ENTREZID",
+  toType = "SYMBOL",
+  OrgDb = org.Hs.eg.db
+)
+
+
+# View significant genes linked to your enriched GO terms
+print(sig_genes_symbols)
