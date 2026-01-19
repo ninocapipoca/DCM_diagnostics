@@ -29,9 +29,6 @@ setwd(directory_path)
 # # Requires CPMS_SVA_corrected.RDS from the GitHub above
 # write.csv(CPMS_SVA_corrected,"Data/CPMS_SVA_corrected.csv")
 
-# Load gene expression data and participant information (metadata)
-# NOTE - Gene expression dataset contains CPM
-
 if (exists("CPMS_SVA_corrected")){
   # In case you download the .RMD file from GitHub and open it here
   gxData_all <- CPMS_SVA_corrected
