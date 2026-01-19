@@ -13,9 +13,17 @@ lapply(.packages, require, character.only = TRUE)
 directory_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(directory_path)
 
-lasso_genes <- read.csv("Data/key_genes_ranked_lasso.csv")
-SVM_genes <- read.csv("Data/svm-rfe_genes_ranked.csv")
-netw_genes <- read.csv("Data/geneInfo_top50.csv")
+s <- "F" # change this if needed
+
+lasso_genes <- read.csv(sprintf("Data/key_genes_ranked_lasso_%s.csv", s))
+SVM_genes <- read.csv(sprintf("Data/svm-rfe_genes_ranked_%s.csv", s))
+
+if (s == "F"){
+  netw_genes <- read.csv("Data/geneInfo_top50.csv")
+} else {
+  netw_genes <- read.csv("Data/geneInfo_males_top50.csv")
+}
+
 
 #-----------------------------------------------------------------------------#
 # Venn Diagram

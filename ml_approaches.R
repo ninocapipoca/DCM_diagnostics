@@ -474,6 +474,8 @@ svm_genes_ranked <- svm_vars |>
 
 svm_genes_ranked
 
+write.csv(sprintf("svm-rfe_genes_ranked_%s.csv", s))
+
 # PRETTYPLOT - SVM-RFE Performance ---
 svm_perf <- svm_rfe$results |> 
   filter(Variables != 20781) |> 
