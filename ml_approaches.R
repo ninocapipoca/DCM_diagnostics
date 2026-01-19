@@ -60,21 +60,22 @@ data <- log2(data + 1)
 # Filter out SVA columns
 metadata <- metadata_SVA |> dplyr::select(1:16)
 
-.female <- TRUE # For exploring dataset further, if necessary
+.female <- FALSE # Decide which part of the data to run on
+
 if (.female){
+  s <- "F"
   # Filter out only female participants who either have DCM or are healthy
   metadata <- metadata |> 
     filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
 } else {
-  # Filter out everything that is not DCM or healthy
+  s <- "M"
+  # Filter out only male participants
   metadata <- metadata |> 
-    filter(etiology == "DCM" | etiology == "NF")
+    filter(gender == "Male" & (etiology == "DCM" | etiology == "NF"))
 }
 
 # Filter gene data to include only participants also in metadata
 gxData <- data[, colnames(data) %in% rownames(metadata)]
-
-count <- metadata[metadata$etiology == "NF",]
 
 #-----------------------------------------------------------------------------
 # Cleanup
@@ -164,7 +165,7 @@ lasso_cv_data <- data.frame(
 
 lasso_perf <- ggplot(lasso_cv_data, aes(x = num_features, y = 1 - cvm)) +
   geom_line(color = "purple") +
-  geom_point(color = "purple", size = 2) +
+  geom_point(color = "purple", size = 1) +
   labs(
     title = "Lasso Performance",
     x = "Number of Features (genes)",
@@ -174,10 +175,14 @@ lasso_perf <- ggplot(lasso_cv_data, aes(x = num_features, y = 1 - cvm)) +
 
 lasso_perf
 
-ggsave("Figures/lasso_perf.png", plot = lasso_perf)
+ggsave(sprintf("Figures/lasso_perf_%s.png", s), 
+       plot = lasso_perf,
+       width = 2000,
+       height = 1000,
+       units = "px")
 
 lasso_tuning <- ggplot(lasso_cv_data, aes(x = -1*log(lambda), y = cvm)) +
-  geom_point(color = "purple", size = 2) +
+  geom_point(color = "purple", size = 1) +
   geom_line(color = "purple", size = 0.8) +
   geom_ribbon(aes(ymin = cvm - cvsd, ymax = cvm + cvsd), 
               fill = "purple", alpha = 0.2) +
@@ -199,7 +204,11 @@ lasso_tuning <- ggplot(lasso_cv_data, aes(x = -1*log(lambda), y = cvm)) +
 
 lasso_tuning
 
-ggsave("Figures/lasso_tuning.png", plot = lasso_tuning)
+ggsave(sprintf("Figures/lasso_tuning_%s.png", s), 
+       plot = lasso_tuning,
+       width = 2000,
+       height = 1000,
+       units = "px")
 
 # END OF PLOTS
 
@@ -210,16 +219,17 @@ coeffs <- coef(lasso.fit, s = "lambda.1se")
 
 # create lasso_genes df
 lasso_genes <- .coeffs_df |>
-  filter(lambda.1se != 0) |>
+  filter(lambda.1se != 0)
+lasso_genes <- lasso_genes |>
   filter(rownames(lasso_genes) != "(Intercept)") |>
   arrange(desc(abs(lambda.1se)))
 
 # write to CSV, in order
 # rownames are the gene names
-write.csv(lasso_genes, file="Data/key_genes_ranked_lasso.csv")
+write.csv(lasso_genes, file=sprintf("Data/key_genes_ranked_lasso_%s.csv", s))
 
 # Write names to text file
-cat(rownames(lasso_genes), file = "Data/key_genes_lasso.txt")
+cat(rownames(lasso_genes), file = sprintf("Data/key_genes_lasso_%s.txt", s))
 
 # Test set predictions
 lasso.pred <- predict(lasso.fit,
@@ -246,7 +256,11 @@ lassopred_hist <- ggplot(lasso.pred, aes(x = lambda.1se)) +
 
 lassopred_hist
 
-ggsave("Figures/lassopred_hist.png", plot = lassopred_hist)
+ggsave(sprintf("Figures/lassopred_hist_%s.png", s), 
+       plot = lassopred_hist,
+       width = 2000,
+       height = 1000,
+       units = "px")
 # END OF PLOT ---
 
 cm_lasso <- confusionMatrix(pred_class, y_test)
@@ -263,8 +277,8 @@ roc_data <- data.frame(
 )
 
 roc_lasso <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
-  geom_path(size = 0.5, color = "purple") +
-  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
+  geom_path(size = 1, color = "purple") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "#898989") +
   labs(
     title = "Lasso ROC Curve",
     x = "False Positive Rate",
@@ -276,7 +290,11 @@ roc_lasso <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
 
 roc_lasso
 
-ggsave("Figures/roc_lasso.png", plot = roc_lasso)
+ggsave(sprintf("Figures/roc_lasso_%s.png", s), 
+       plot = roc_lasso,
+       width = 1000,
+       height = 1000,
+       units = "px")
 # END OF PLOT ---
 
 
@@ -350,7 +368,11 @@ RF_perf <- RF.model$results |>
 
 RF_perf
 
-ggsave("Figures/RF_perf.png", plot = RF_perf)
+ggsave(sprintf("Figures/RF_perf_%s.png", s), 
+       plot = RF_perf,
+       width = 2000,
+       height = 1000,
+       units = "px")
 # END OF PLOT ---
 
 # Evaluate performance on test set
@@ -391,7 +413,11 @@ roc_RF <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
 
 roc_RF
 
-ggsave("Figures/roc_RF.png", plot = roc_RF)
+ggsave(sprintf("Figures/roc_RF_%s.png", s), 
+       plot = roc_RF,
+       width = 1000,
+       height = 1000,
+       units = "px")
 # END OF PLOT ---
 
 # Export genes considered most important 
@@ -399,11 +425,11 @@ ggsave("Figures/roc_RF.png", plot = roc_RF)
 
 key_genes_all <- varImp(RF.model)$importance |> arrange(desc(Overall))
 View(key_genes_all) 
-write.csv(key_genes_all,"Data/genes_RF_ranked.csv")
+write.csv(key_genes_all,sprintf("Data/genes_RF_ranked_%s.csv", s))
 
 gene_names <- rownames(key_genes_all)
-cat(gene_names[1:38], file = "Data/key_genes_RF.txt")
-cat(gene_names, file = "Data/key_genes_ALL_RF.txt")
+cat(gene_names[1:38], file = sprintf("Data/key_genes_RF_%s.txt", s))
+cat(gene_names, file = sprintf("Data/key_genes_ALL_RF_%s.txt", s))
 
 ###### WARNING - GENAI! ----------------------------------
 # Try with randomly shuffled labels
@@ -461,7 +487,11 @@ svm_perf <- svm_rfe$results |>
 
 svm_perf
 
-ggsave("Figures/sva_perf.png", plot = svm_perf)
+ggsave(sprintf("Figures/svmrfe_perf_%s.png", s), 
+       plot = svm_perf,
+       width = 2000,
+       height = 1000,
+       units = "px")
 # END OF PLOT ---
 
 SVMRFE.pred <- predict(svm_rfe, x_test)
@@ -493,7 +523,11 @@ roc_SVM <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
 
 roc_SVM
 
-ggsave("Figures/roc_SVM-RFE.png", plot = roc_SVM)
+ggsave(sprintf("Figures/roc_SVM-RFE_%s.png", s), 
+       plot = roc_SVM,
+       width = 1000,
+       height = 1000,
+       units = "px")
 
 # END OF PLOT ---
 
@@ -505,7 +539,11 @@ ggsave("Figures/roc_SVM-RFE.png", plot = roc_SVM)
 
 # COMBINED PLT ---
 combined_ROC <- roc_lasso + roc_RF + roc_SVM 
-ggsave("Figures/combined_ROCs.png", plot = combined_ROC)
+ggsave(sprintf("Figures/combined_ROCs_%s.png", s), 
+       plot = combined_ROC,
+       width = 2000,
+       height = 1000,
+       units = "px")
 # END ---
 
 lasso_table <- as.data.frame(cm_lasso$overall)
@@ -521,4 +559,4 @@ summary_stats <- data.frame(
 
 summary_stats <- as.data.frame(t(summary_stats))
 
-write.csv(summary_stats, "Data/ML_summarystats.csv")
+write.csv(summary_stats, sprintf("Data/ML_summarystats_%s.csv", s))
