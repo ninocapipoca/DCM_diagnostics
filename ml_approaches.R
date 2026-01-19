@@ -493,7 +493,7 @@ if (.SVM){
   
   svm_genes_ranked
   
-  write.csv(sprintf("svm-rfe_genes_ranked_%s.csv", s))
+  write.csv(svm_genes_ranked, sprintf("Data/svm-rfe_genes_ranked_%s.csv", s))
   
   # PRETTYPLOT - SVM-RFE Performance ---
   svm_perf <- svm_rfe$results |> 
