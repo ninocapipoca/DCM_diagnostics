@@ -510,7 +510,7 @@ roc_data <- data.frame(
 )
 
 roc_SVM <- ggplot(roc_data, aes(x = fpr, y = tpr)) +
-  geom_path(size = 0.5, color = "purple") +
+  geom_path(size = 1, color = "purple") +
   geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
   labs(
     title = "SVM-RFE ROC curve",
@@ -538,7 +538,7 @@ ggsave(sprintf("Figures/roc_SVM-RFE_%s.png", s),
 #-----------------------------------------------------------------------------
 
 # COMBINED PLT ---
-combined_ROC <- roc_lasso + roc_RF + roc_SVM 
+combined_ROC <- roc_lasso + roc_SVM 
 ggsave(sprintf("Figures/combined_ROCs_%s.png", s), 
        plot = combined_ROC,
        width = 2000,
@@ -547,13 +547,11 @@ ggsave(sprintf("Figures/combined_ROCs_%s.png", s),
 # END ---
 
 lasso_table <- as.data.frame(cm_lasso$overall)
-RF_table <- as.data.frame(cm_RF$overall)
 SVMRFE_table <- as.data.frame(cm_SVMRFE$overall)
 
 
 summary_stats <- data.frame(
   lasso = lasso_table,
-  RF = RF_table,
   SVM_RFE = SVMRFE_table
 )
 

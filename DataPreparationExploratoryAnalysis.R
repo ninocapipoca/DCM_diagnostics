@@ -39,12 +39,12 @@ metadata_all <- read.csv("Data/MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", a
 if (.female){
   s <- "F"
   # Filter: only female participants who either have DCM or are healthy
-  metadata <- metadata |> 
+  metadata <- metadata_all |> 
     filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
 } else {
   s <- "M"
   # Filter: only male participants
-  metadata <- metadata |> 
+  metadata <- metadata_all |> 
     filter(gender == "Male" & (etiology == "DCM" | etiology == "NF"))
 }
 
@@ -93,7 +93,7 @@ participant_table <- metadata |>
   bold_labels() |>
   # Save as png
   as_gt() |>
-  gtsave("participant_table.png", path=paste0(directory_path, '/Figures'))
+  gtsave(sprintf("participant_table_%s.png", s), path=paste0(directory_path, '/Figures'))
 
 # For display in Rstudio
 participant_table
@@ -115,22 +115,6 @@ for (cond in c("NF", "DCM")) {
   print(cond)
   print(dim(plot_data))
   
-  # Box plot for each condition
-  # if (length(unique(plot_data$SampleID)) > 200) {
-  #   # If too many samples, becomes unreadable; plot first 60
-  #   box_plot <- plot_data |>
-  #     filter(SampleID %in% unique(SampleID)[1:60]) |>
-  #     ggplot(aes(x = SampleID, y = CPM)) + 
-  #     geom_boxplot() +
-  #     theme_minimal(base_size = 7) +
-  #     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  #     theme(axis.text.x = element_blank()) +
-  #     labs(title = paste("Gene expression accross random samples -", cond),
-  #          x = "Sample (label removed)",
-  #          y = "Log2 transformed CPM")
-  # }
-  
-#  else {
     box_plot <- plot_data |>
       ggplot(aes(x = SampleID, y = CPM)) + 
       geom_boxplot() +
@@ -139,7 +123,6 @@ for (cond in c("NF", "DCM")) {
       labs(title = paste("Gene expression accross random samples -", cond),
            x = "Sample ID",
            y = "Log2 transformed CPM")
-#  }
   
   # Density plot legend removed to improve readability (doesn't add much info)
   # Even when low nr of samples, for consistency
@@ -159,7 +142,7 @@ for (cond in c("NF", "DCM")) {
          height = 1000,
          units = "px")
   
-  ggsave(sprintf("Gene Expression for %s Samples.png, %s", cond, s), 
+  ggsave(sprintf("Gene Expression for %s Samples, %s.png", cond, s), 
          plot = box_plot, 
          path=paste0(directory_path, '/Figures'),
          width = 2000,
@@ -247,7 +230,6 @@ get_sig <- function(df) {
 
 DCM_diffexp <- get_sig(dge_res_DCM)
 DCM_diffexp <- cbind(Ensembl_GeneID = rownames(DCM_diffexp), DCM_diffexp) # Make Ensembl_ID a column
-rownames(DCM_diffexp) <- NULL
 
 # Export DCM)_diffexp as an excel file
 if (.female){
@@ -255,6 +237,7 @@ if (.female){
 } else {
   write_xlsx(DCM_diffexp, "Data/DCM_diffexp_corr_male.xlsx") 
 }
+DCM_diffexp$Ensembl_GeneID <- NULL # reset
 
 #-----------------------------------------------------------------------------#
 # Pathway Enrichment Analysis
