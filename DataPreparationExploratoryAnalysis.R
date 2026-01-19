@@ -31,27 +31,26 @@ setwd(directory_path)
 
 # Load gene expression data and participant information (metadata)
 # NOTE - Gene expression dataset contains CPM
-metadata_all <- read.csv("Data/MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
 if (exists("CPMS_SVA_corrected")){
   # In case you download the .RMD file from GitHub and open it here
   gxData_all <- CPMS_SVA_corrected
 } else {
   tryCatch({
-    # Try loading metadata
-    metadata_all <- read.csv("Data/metadata_MAGNET_all.csv", as.is = T, row.names = 1)
+    # Try loading gene expression data from corrected file
+    gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", row.names = 1, header = TRUE)
   }, warning = function(w) {
     cat("A warning occurred:", conditionMessage(w), "\n")
-    print("Try redownloading or renaming metadata file (from MAGNET ONLY! not SVA-metadata!)")
+    print("Add the file to Data or download from https://github.com/mpmorley/MAGNet")
   })
 }
 
 tryCatch({
-  # Try loading gene expression data from corrected values
-  gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", row.names = 1, header = TRUE)
+  # Try loading metadata
+  metadata_all <- read.csv("Data/metadata_MAGNET_all.csv", as.is = T, row.names = 1)
 }, warning = function(w) {
   cat("A warning occurred:", conditionMessage(w), "\n")
-  print("Add the file to Data or download from https://github.com/mpmorley/MAGNet")
+  print("Try redownloading or renaming metadata file (from MAGNET ONLY! not SVA-metadata!)")
 })
 
 .female <- FALSE # Decide which part of the data to run on
