@@ -64,12 +64,12 @@ metadata <- metadata_SVA |> dplyr::select(1:16)
 
 if (.female){
   s <- "F"
-  # Filter out only female participants who either have DCM or are healthy
+  # Filter: only female participants who either have DCM or are healthy
   metadata <- metadata |> 
     filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
 } else {
   s <- "M"
-  # Filter out only male participants
+  # Filter: only male participants
   metadata <- metadata |> 
     filter(gender == "Male" & (etiology == "DCM" | etiology == "NF"))
 }

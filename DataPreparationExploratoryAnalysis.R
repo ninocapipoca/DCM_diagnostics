@@ -34,9 +34,19 @@ setwd(directory_path)
 gxData_all <- read.csv("Data/CPMS_SVA_corrected.csv", as.is = T, row.names = 1)
 metadata_all <- read.csv("Data/MAGNET_GX_2025/MAGNET_SampleData_18112022.csv", as.is = T, row.names = 1)
 
-# Filter out only female participants who either have DCM or are healthy
-metadata <- metadata_all |> 
-  filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
+.female <- FALSE # Decide which part of the data to run on
+
+if (.female){
+  s <- "F"
+  # Filter: only female participants who either have DCM or are healthy
+  metadata <- metadata |> 
+    filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
+} else {
+  s <- "M"
+  # Filter: only male participants
+  metadata <- metadata |> 
+    filter(gender == "Male" & (etiology == "DCM" | etiology == "NF"))
+}
 
 # Filter gxData_all to include only participants also in metadata
 gxData <- gxData_all[, colnames(gxData_all) %in% rownames(metadata)]
@@ -49,8 +59,8 @@ gxData <- impute_median(gxData, type = "columnwise")
 metadata <- metadata |> mutate_if(is.character, as.factor)
 
 # Export filtered gxData and metadata for use in other scripts
-write.csv(gxData, "Data/gxData_female_corr.csv")
-write.csv(metadata, "Data/metadata_female_corr.csv")
+write.csv(gxData, sprintf("Data/gxData_%s_corr.csv", s))
+write.csv(metadata, sprintf("Data/metadata_%s_corr.csv", s))
 
 # Participant table -----------------------------------------------------------
 participant_table <- metadata |>
@@ -142,11 +152,19 @@ for (cond in c("NF", "DCM")) {
          x = "Log2 transformed CPM",
          y = "Density")
   
-  ggsave(sprintf("Density plot for %s Samples.png", cond), plot = density_plot, 
-         path=paste0(directory_path, '/Figures'))
+  ggsave(sprintf("Density plot for %s Samples, %s.png", cond, s), 
+         plot = density_plot, 
+         path=paste0(directory_path, '/Figures'),
+         width = 2000,
+         height = 1000,
+         units = "px")
   
-  ggsave(sprintf("Gene Expression for %s Samples.png", cond), plot = box_plot, 
-         path=paste0(directory_path, '/Figures'))
+  ggsave(sprintf("Gene Expression for %s Samples.png, %s", cond, s), 
+         plot = box_plot, 
+         path=paste0(directory_path, '/Figures'),
+         width = 2000,
+         height = 1000,
+         units = "px")
   
 }
 
@@ -172,7 +190,12 @@ scree <- ggplot(var_expl, aes(x = Component, y = Variance)) +
        y = "Proportion of variance explained")
 
 scree
-ggsave("Scree_plot.png", plot = scree, path=paste0(directory_path, '/Figures'))
+ggsave(sprintf("Scree_plot_%s.png", s), 
+       plot = scree, 
+       path=paste0(directory_path, '/Figures'),
+       width = 2000,
+       height = 1000,
+       units = "px")
 
 # Compare PCs; see if clustering arises corresponding to any metadata feature
 plot_pca <- cbind(data.frame(pca_res@scores), metadata)
@@ -189,7 +212,13 @@ pca1v2 <- ggplot(plot_pca, aes(x = PC1, y = PC2)) +
   theme_minimal()
 
 pca1v2
-ggsave("PC1_PC2_corr.png", plot = pca1v2, path=paste0(directory_path, '/Figures'))
+
+ggsave(sprintf("PC1_PC2_corr_%s.png", s), 
+       plot = pca1v2, 
+       path=paste0(directory_path, '/Figures'),
+       width = 2000,
+       height = 1000,
+       units = "px")
 
 #-----------------------------------------------------------------------------#
 # Differential Expression Analysis
@@ -220,7 +249,12 @@ DCM_diffexp <- get_sig(dge_res_DCM)
 DCM_diffexp <- cbind(Ensembl_GeneID = rownames(DCM_diffexp), DCM_diffexp) # Make Ensembl_ID a column
 rownames(DCM_diffexp) <- NULL
 
-write_xlsx(DCM_diffexp, "Data/DCM_diffexp_corr.xlsx") # Export DCM)_diffexp as an excel file
+# Export DCM)_diffexp as an excel file
+if (.female){
+  write_xlsx(DCM_diffexp, "Data/DCM_diffexp_corr.xlsx") 
+} else {
+  write_xlsx(DCM_diffexp, "Data/DCM_diffexp_corr_male.xlsx") 
+}
 
 #-----------------------------------------------------------------------------#
 # Pathway Enrichment Analysis
@@ -272,19 +306,29 @@ kegg_down <- enrichKEGG(gene = down_new$ENTREZID,
                         qvalueCutoff = 0.05)
 
 # Save output as CSV
-write.csv(kegg_down@result, "Data/kegg_down_DCM_corr.csv")
-write.csv(kegg_up@result,"Data/kegg_up_DCM_corr.csv")
+write.csv(kegg_down@result, sprintf("Data/kegg_down_DCM_corr_%s.csv", s))
+write.csv(kegg_up@result, sprintf("Data/kegg_up_DCM_corr_%s.csv", s))
 
 # Create dot plots showing most enriched categories and how much
 dotplot_up <- dotplot(kegg_up, showCategory = 10) +
   ggtitle("KEGG PEA - Upregulated") +
   theme(axis.text.y = element_text(size = 8))
-ggsave("Dotplot_Upreg_KEGG_corr.png", path=paste0(directory_path, '/Figures'))
+
+ggsave(sprintf("Dotplot_Upreg_KEGG_corr_%s.png", s), 
+       path=paste0(directory_path, '/Figures'),
+       width = 2000,
+       height = 1000,
+       units = "px")
 
 dotplot_down <- dotplot(kegg_down, showCategory = 10) +
   ggtitle("KEGG PEA - Downregulated") +
   theme(axis.text.y = element_text(size = 8))
-ggsave("Dotplot_Downreg_KEGG_corr.png", path=paste0(directory_path, '/Figures'))
+
+ggsave(sprintf("Dotplot_Downreg_KEGG_corr_%s.png", s), 
+       path=paste0(directory_path, '/Figures'),
+       width = 2000,
+       height = 1000,
+       units = "px")
 
 # GO Enrichment Analysis -----------------------------------------------------
 
@@ -313,8 +357,8 @@ for (ontology in c("BP", "CC", "MF")) {
   
   print("Saving as CSV")
   # Save output as CSV
-  write.csv(GO_up@result, sprintf("Data/GO_%s_up_DCM_corr.csv", ontology))
-  write.csv(GO_down@result,sprintf("Data/GO_%s_down_DCM_corr.csv", ontology))
+  write.csv(GO_up@result, sprintf("Data/GO_%s_up_DCM_corr_%s.csv", ontology, s))
+  write.csv(GO_down@result,sprintf("Data/GO_%s_down_DCM_corr_%s.csv", ontology, s))
   print("Done - saved as CSV")
   
   # Create GO dot plots
@@ -323,15 +367,23 @@ for (ontology in c("BP", "CC", "MF")) {
   dotplot_up <- dotplot(GO_up, showCategory = 10) +
     ggtitle(sprintf("GO PEA (Up) - %s", ontology)) +
     theme(axis.text.y = element_text(size = 8))
-  ggsave(sprintf("Dotplot_Upreg_GO_%s_corr.png", ontology),
-         path=paste0(directory_path, '/Figures'))
+  
+  ggsave(sprintf("Dotplot_Upreg_GO_%s_corr_%s.png", ontology, s),
+         path=paste0(directory_path, '/Figures'),
+         width = 2000,
+         height = 1000,
+         units = "px")
   print("Upreg dotplot done")
   
   dotplot_down <- dotplot(GO_down, showCategory = 10) +
     ggtitle(sprintf("GO PEA (Down) - %s", ontology)) +
     theme(axis.text.y = element_text(size = 8))
-  ggsave(sprintf("Dotplot_Downreg_GO_%s_corr.png", ontology),
-         path=paste0(directory_path, '/Figures'))
+  
+  ggsave(sprintf("Dotplot_Downreg_GO_%s_corr_%s.png", ontology, s),
+         path=paste0(directory_path, '/Figures'),
+         width = 2000,
+         height = 1000,
+         units = "px")
   print("Downreg dotplot done")
 }
 
