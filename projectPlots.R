@@ -14,10 +14,25 @@ directory_path <- dirname(rstudioapi::getSourceEditorContext()$path)
 setwd(directory_path)
 
 # Import data, filtered and imputed
-gxData <- read.csv("Data/gxData_female_corr.csv", as.is = T, row.names = 1)
-metadata <- read.csv("Data/metadata_female_corr.csv", as.is = T, row.names = 1)
+gxData <- read.csv("Data/gxData_M_corr.csv", as.is = T, row.names = 1)
+metadata <- read.csv("Data/metadata_MAGNET_all.csv", as.is = T, row.names = 1)
 
-key_genes <- scan("Data/AAA_COMMON_GENES.txt", what = "character")
+key_genes <- scan("Data/AAA_COMMON_GENES_F.txt", what = "character")
+
+.female <- FALSE 
+
+if (.female){
+  s <- "F"
+  # Filter: only female participants who either have DCM or are healthy
+  metadata <- metadata_all |> 
+    filter(gender == "Female" & (etiology == "DCM" | etiology == "NF"))
+} else {
+  s <- "M"
+  # Filter: only male participants
+  metadata <- metadata_all |> 
+    filter(gender == "Male" & (etiology == "DCM" | etiology == "NF"))
+}
+
 
 #-----------------------------------------------------------------------------#
 # Define theme
@@ -38,11 +53,13 @@ theme_pretty <- function() {
 # Key genes plot(s)
 #-----------------------------------------------------------------------------#
 
-kg_plotdata <- as.data.frame(t(gxData[key_genes, ])) |>
-  cbind(etiology = metadata[rownames(kg_plotdata), "etiology"]) |>
-  pivot_longer(cols = -etiology, names_to = "Gene", values_to = "Expression")
+kg_plotdata <- as.data.frame(t(gxData[key_genes, ])) 
 
-kg_plot <- ggplot(kg_plotdata, aes(x = etiology, y = Expression, fill = etiology)) +
+kg_plotdata <- kg_plotdata |>
+              cbind(etiology = metadata[rownames(kg_plotdata), "etiology"]) |>
+              pivot_longer(cols = -etiology, names_to = "Gene", values_to = "Expression")
+
+kg_plot <- ggplot(kg_plotdata, aes(x = etiology, y = Expression, fill = etiology))+
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(width = 0.2, size = 1, alpha = 0.6) +
   facet_wrap(~Gene, scales = "free_y") +
@@ -53,4 +70,4 @@ kg_plot <- ggplot(kg_plotdata, aes(x = etiology, y = Expression, fill = etiology
 
 kg_plot
 
-ggsave("Figures/keygene_boxplots.png", plot = kg_plot, width = 12, height = 6, dpi = 300)
+ggsave("Figures/keygene_malegenesinfemale_boxplots.png", plot = kg_plot, width = 12, height = 6, dpi = 300)

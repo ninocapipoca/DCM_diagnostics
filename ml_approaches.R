@@ -5,14 +5,14 @@
 # allowing us to obtain a list of most relevant genes in DCM.                 #
 #=============================================================================#
 # Flags
-.female <- FALSE # Decide which part of the data to run on
+.female <- TRUE # Decide which part of the data to run on
 .permute <- FALSE # Run permutation tests or not
 .combine <- FALSE # Combine SVM & lasso plots, summary stats
 
 # Choose which algorithms to run (default F, T, T)
 .RF <- FALSE
-.SVM <- TRUE
-.lasso <- FALSE
+.SVM <- FALSE
+.lasso <- TRUE
 
 
 # Load packages
